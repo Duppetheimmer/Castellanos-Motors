@@ -1,0 +1,6 @@
+{
+  "name": "EconoGRAPH",
+  "description": "Gestión financiera, control de inventario y comisiones de trabajadores para taller automotriz",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
