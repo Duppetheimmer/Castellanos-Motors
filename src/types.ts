@@ -106,3 +106,33 @@ export interface HistorialPago {
   observaciones: string;
   creado_en: string;
 }
+
+export interface VentaIndividualItem {
+  id: string;
+  nombre: string;
+  qty: number;
+  precio: number; // custom or standard direct sale price (with discounts)
+  costo: number;  // unit cost of the spare part
+  qty_devuelta?: number; // quantity returned by customer
+}
+
+export interface VentaIndividual {
+  id: string;
+  fecha: string;
+  cliente_nombre: string;
+  cliente_cedula?: string;
+  items: VentaIndividualItem[];
+  tasa_usdt: number;
+  total_usd: number;
+  creado_en: string;
+}
+
+export interface LogBorrados {
+  id: string;
+  fecha_suceso: string;
+  tipo_entidad: 'venta' | 'orden' | 'transaccion' | 'devolucion_repuesto';
+  descripcion_auditoria: string;
+  monto?: number;
+  usuario?: string;
+}
+

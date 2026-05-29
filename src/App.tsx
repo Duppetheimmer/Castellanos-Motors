@@ -11,7 +11,7 @@ import {
   INITIAL_SOLICITUDES,
   INITIAL_TRANSACCIONES
 } from './data';
-import { Cliente, Vehiculo, Repuesto, Orden, Trabajador, TransaccionExtra } from './types';
+import { Cliente, Vehiculo, Repuesto, Orden, Trabajador, TransaccionExtra, VentaIndividual, LogBorrados } from './types';
 import { DashboardCharts } from './components/DashboardCharts';
 import { InventoryManager } from './components/InventoryManager';
 import { OrdersManager } from './components/OrdersManager';
@@ -19,6 +19,8 @@ import { WorkersManager } from './components/WorkersManager';
 import { ExtraTransactions } from './components/ExtraTransactions';
 import { ClientsVehicles } from './components/ClientsVehicles';
 import { LoginScreen } from './components/LoginScreen';
+import { VentasIndividualesManager } from './components/VentasIndividualesManager';
+import { AuditLogViewer } from './components/AuditLogViewer';
 import {
   Wrench,
   BarChart3,
@@ -33,7 +35,9 @@ import {
   TrendingUp,
   X,
   LogOut,
-  Key
+  Key,
+  ShoppingBag,
+  History
 } from 'lucide-react';
 
 // Calendar Period helpers for weekly/monthly categorization
@@ -256,6 +260,8 @@ export default function App() {
   const [ordenes, setOrdenes] = useState<Orden[]>(() => loadState('ordenes', INITIAL_ORDENES));
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>(() => loadState('trabajadores', INITIAL_TRABAJADORES));
   const [transacciones, setTransacciones] = useState<TransaccionExtra[]>(() => loadState('transacciones', INITIAL_TRANSACCIONES));
+  const [ventasIndividuales, setVentasIndividuales] = useState<VentaIndividual[]>(() => loadState('ventas_individuales', []));
+  const [logBorrados, setLogBorrados] = useState<LogBorrados[]>(() => loadState('log_borrados', []));
 
   const [supabaseConnected, setSupabaseConnected] = useState<boolean>(false);
   const [loadingSupabase, setLoadingSupabase] = useState<boolean>(false);
@@ -275,6 +281,23 @@ export default function App() {
         const { data: dbTrab } = await supabase.from('trabajadores').select('*');
         const { data: dbOrd } = await supabase.from('ordenes').select('*');
         const { data: dbTx } = await supabase.from('transacciones_extra').select('*');
+
+        let dbVentasInd: any[] | null = null;
+        let dbLogBorrados: any[] | null = null;
+
+        try {
+          const { data } = await supabase.from('ventas_individuales').select('*');
+          dbVentasInd = data;
+        } catch (e) {
+          console.warn('La tabla de ventas_individuales no pudo ser leída o no existe aún:', e);
+        }
+
+        try {
+          const { data } = await supabase.from('historial_borrados').select('*');
+          dbLogBorrados = data;
+        } catch (e) {
+          console.warn('La tabla de historial_borrados no pudo ser leída o no existe aún:', e);
+        }
 
         const totalRows = (dbCli?.length || 0) + (dbVeh?.length || 0) + (dbRep?.length || 0) + (dbTrab?.length || 0) + (dbOrd?.length || 0) + (dbTx?.length || 0);
 
@@ -301,6 +324,14 @@ export default function App() {
           if (dbTrab) setTrabajadores(dbTrab);
           if (dbOrd) setOrdenes(dbOrd as any);
           if (dbTx) setTransacciones(dbTx as any);
+          if (dbVentasInd) {
+            setVentasIndividuales(dbVentasInd);
+            saveState('ventas_individuales', dbVentasInd);
+          }
+          if (dbLogBorrados) {
+            setLogBorrados(dbLogBorrados);
+            saveState('log_borrados', dbLogBorrados);
+          }
         }
         setSupabaseConnected(true);
       } catch (err) {
@@ -314,7 +345,7 @@ export default function App() {
   }, []);
 
   // Current selected screen
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventario' | 'ordenes' | 'personal' | 'clientes' | 'flujo'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventario' | 'ordenes' | 'personal' | 'clientes' | 'flujo' | 'ventas_directas' | 'auditoria'>('dashboard');
 
   // Year-Month level selection for EconoGRAPH (e.g. '2025-05' or 'Todos')
   const [periodType, setPeriodType] = useState<'todos' | 'semanal' | 'mensual' | 'anual'>('todos');
@@ -497,6 +528,20 @@ export default function App() {
   };
 
   const handleDeleteOrden = async (id: string) => {
+    const match = ordenes.find((x) => x.id === id);
+    if (match) {
+      const partsTotal = match.repuestos.reduce((sum, item) => sum + (Number(item.precio || 0) * item.qty), 0);
+      const laborTotal = Number(match.labor_cost || 0);
+      const grandTotal = partsTotal + laborTotal;
+      const detailString = `Orden de Trabajo Eliminada: ID ${match.id}, Coste de Labor: $${laborTotal}, Repuestos devueltos al almacén: ${match.repuestos.map(i => `${i.id} (Can: ${i.qty})`).join(', ')}`;
+      logDeletionToAudit('orden', detailString, grandTotal);
+
+      // Return spare parts back to physical stock
+      if (match.repuestos && match.repuestos.length > 0) {
+        handleAddInventoryStock(match.repuestos.map(item => ({ id: item.id, qty: item.qty })));
+      }
+    }
+
     const updated = ordenes.filter((x) => x.id !== id);
     setOrdenes(updated);
     saveState('ordenes', updated);
@@ -555,6 +600,12 @@ export default function App() {
   };
 
   const handleDeleteTransaccion = async (id: string) => {
+    const match = transacciones.find((x) => x.id === id);
+    if (match) {
+      const detailString = `Transacción Contable Eliminada: ID ${match.id}, Categoría: ${match.categoria}, Descripción: ${match.descripcion}`;
+      logDeletionToAudit('transaccion', detailString, match.monto);
+    }
+
     const updated = transacciones.filter((x) => x.id !== id);
     setTransacciones(updated);
     saveState('transacciones', updated);
@@ -589,6 +640,156 @@ export default function App() {
     });
     setRepuestos(updated);
     saveState('repuestos', updated);
+  };
+
+  // Triggers stock increase upon item refund / deletion
+  const handleAddInventoryStock = async (sparePartsReturned: { id: string; qty: number }[]) => {
+    const updated = repuestos.map((r) => {
+      const match = sparePartsReturned.find((pu) => pu.id === r.id);
+      if (match) {
+        const afterAdd = {
+          ...r,
+          cantidad: r.cantidad + match.qty
+        };
+        // Sync modified spare parts count to Supabase
+        if (isSupabaseConfigured()) {
+          supabase.from('repuestos').upsert(afterAdd).then(({ error }) => {
+            if (error) console.error('Error returning spare part stock to cloud sync:', error);
+          });
+        }
+        return afterAdd;
+      }
+      return r;
+    });
+    setRepuestos(updated);
+    saveState('repuestos', updated);
+  };
+
+  // Helper to append cloud-synchronized Audit deletion logs
+  const logDeletionToAudit = async (tipo: 'venta' | 'orden' | 'transaccion' | 'devolucion_repuesto', descripcion: string, monto?: number) => {
+    const newLog: LogBorrados = {
+      id: `AUD-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      fecha_suceso: new Date().toISOString(),
+      tipo_entidad: tipo,
+      descripcion_auditoria: descripcion,
+      monto: monto,
+      usuario: 'Castellanos Motors Admin'
+    };
+
+    const updated = [newLog, ...logBorrados];
+    setLogBorrados(updated);
+    saveState('log_borrados', updated);
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('historial_borrados').upsert(newLog);
+      } catch (err) {
+        console.error('Error syncing audit deletion logs to cloud container:', err);
+      }
+    }
+  };
+
+  // Direct raw individual sales save handler
+  const handleSaveVentaIndividual = async (venta: VentaIndividual) => {
+    const isNew = !ventasIndividuales.some((x) => x.id === venta.id);
+    const updated = isNew
+      ? [venta, ...ventasIndividuales]
+      : ventasIndividuales.map((x) => (x.id === venta.id ? venta : x));
+    
+    setVentasIndividuales(updated);
+    saveState('ventas_individuales', updated);
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('ventas_individuales').upsert(venta);
+      } catch (e) {
+        console.error('Error syncing direct product sales invoice in Supabase:', e);
+      }
+    }
+
+    // Automatically decrease inventory quantities for newly purchased spare part slots
+    if (isNew) {
+      handleUpdateInventoryStock((venta.items || []).map(item => ({ id: item.id, qty: item.qty })));
+    }
+  };
+
+  // Direct raw individual sales delete handler (returns items back to inventory stock and triggers audit log tracking)
+  const handleDeleteVentaIndividual = async (id: string) => {
+    const match = ventasIndividuales.find((x) => x.id === id);
+    if (!match) return;
+
+    const updated = ventasIndividuales.filter((x) => x.id !== id);
+    setVentasIndividuales(updated);
+    saveState('ventas_individuales', updated);
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('ventas_individuales').delete().eq('id', id);
+      } catch (e) {
+        console.error('Error deleting direct product sales invoice from Supabase:', e);
+      }
+    }
+
+    // Return the parts back to stock
+    handleAddInventoryStock((match.items || []).map(item => ({ id: item.id, qty: item.qty })));
+
+    // Create deletion audit logs in real-time
+    const detailString = `Venta Directa Eliminada: ID ${match.id}, Cliente: ${match.cliente_nombre}, Items: ${(match.items || []).map(i => `${i.nombre} (Can: ${i.qty})`).join(', ')}`;
+    logDeletionToAudit('venta', detailString, match.total_usd);
+  };
+
+  // Dedicated refund/return and stock replenishment handler
+  const handleRefundVentaIndividualItem = async (ventaId: string, itemId: string, refundQty: number) => {
+    const ventaMatch = ventasIndividuales.find((v) => v.id === ventaId);
+    if (!ventaMatch) return;
+
+    const itemMatch = (ventaMatch.items || []).find((i) => i.id === itemId);
+    if (!itemMatch) return;
+
+    const currentDevueltos = itemMatch.qty_devuelta || 0;
+    if (currentDevueltos + refundQty > itemMatch.qty) {
+      alert("No puedes devolver más cantidad de la comprada.");
+      return;
+    }
+
+    // Calculate refund amount
+    const refundAmount = refundQty * itemMatch.precio;
+
+    // Update items list
+    const updatedItems = (ventaMatch.items || []).map((item) => {
+      if (item.id === itemId) {
+        return {
+          ...item,
+          qty_devuelta: currentDevueltos + refundQty
+        };
+      }
+      return item;
+    });
+
+    const updatedVenta: VentaIndividual = {
+      ...ventaMatch,
+      items: updatedItems,
+      total_usd: Math.max(0, ventaMatch.total_usd - refundAmount)
+    };
+
+    const updatedVentas = ventasIndividuales.map((v) => (v.id === ventaId ? updatedVenta : v));
+    setVentasIndividuales(updatedVentas);
+    saveState('ventas_individuales', updatedVentas);
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('ventas_individuales').upsert(updatedVenta);
+      } catch (err) {
+        console.error('Error syncing returned/refunded sale state to Supabase:', err);
+      }
+    }
+
+    // Replenish stock
+    await handleAddInventoryStock([{ id: itemId, qty: refundQty }]);
+
+    // Log the refund event in the audit trail
+    const detailString = `Devolución y Reabastecimiento de Repuesto: Venta ID ${ventaId}, Cliente: ${ventaMatch.cliente_nombre}, Repuesto: ${itemMatch.nombre}, Cantidad Develta: ${refundQty} unidades, Reembolso: $${refundAmount.toFixed(2)} USD`;
+    logDeletionToAudit('devolucion_repuesto', detailString, refundAmount);
   };
 
   // Records worker commission payment as a custom Transaction OUTFLOW (Salida)
@@ -639,7 +840,16 @@ export default function App() {
       return true;
     });
 
-    // 3. INFLOWS: Sum of Labor + Spare parts retail sales + Manual external incomes
+    // Filter direct raw individual sales by period scope
+    const periodVentasIndividuales = ventasIndividuales.filter((v) => {
+      if (periodType === 'todos' || selectedPeriod === 'Todos') return true;
+      if (periodType === 'semanal') return getWeekId(v.fecha) === selectedPeriod;
+      if (periodType === 'mensual') return v.fecha && v.fecha.startsWith(selectedPeriod);
+      if (periodType === 'anual') return v.fecha && v.fecha.startsWith(selectedPeriod);
+      return true;
+    });
+
+    // 3. INFLOWS: Sum of Labor + Spare parts retail sales + Manual external incomes + Direct individual sales
     const orderLaborInflow = periodOrders.reduce((sum, o) => sum + Number(o.labor_cost || 0), 0);
     const orderPartsRetailInflow = periodOrders.reduce((sum, o) => {
       const orderPartsTotal = o.repuestos.reduce((pSum, item) => {
@@ -654,10 +864,12 @@ export default function App() {
       .filter((t) => t.tipo === 'entrada')
       .reduce((sum, t) => sum + Number(t.monto || 0), 0);
 
-    const ingresosTotales = orderLaborInflow + orderPartsRetailInflow + manualIncomeInflow;
+    const directSalesInflow = periodVentasIndividuales.reduce((sum, v) => sum + Number(v.total_usd || 0), 0);
 
-    // 4. INVENTORY OUTFLOW (Costo Repuestos): Buy/cost value of parts eaten up by orders
-    const costoRepuestos = periodOrders.reduce((sum, o) => {
+    const ingresosTotales = orderLaborInflow + orderPartsRetailInflow + manualIncomeInflow + directSalesInflow;
+
+    // 4. INVENTORY OUTFLOW (Costo Repuestos): Buy/cost value of parts eaten up by orders and direct sales
+    const orderPartsCost = periodOrders.reduce((sum, o) => {
       const orderPartsCosts = o.repuestos.reduce((cSum, item) => {
         const masterItem = repuestos.find(r => r.id === item.id);
         const itemCost = Number(item.costo || masterItem?.costo || (Number(item.precio || masterItem?.precio || 0) * 0.6));
@@ -665,6 +877,17 @@ export default function App() {
       }, 0);
       return sum + orderPartsCosts;
     }, 0);
+
+    const directSalesPartsCost = periodVentasIndividuales.reduce((sum, v) => {
+      const itemsCost = (v.items || []).reduce((itemSum, item) => {
+        const masterItem = repuestos.find(r => r.id === item.id);
+        const itemCost = Number(item.costo || masterItem?.costo || (Number(item.precio || masterItem?.precio || 0) * 0.6));
+        return itemSum + (itemCost * Number(item.qty || 0));
+      }, 0);
+      return sum + itemsCost;
+    }, 0);
+
+    const costoRepuestos = orderPartsCost + directSalesPartsCost;
 
     // 5. WORKER INCENTI-COMMISSIONS (Comision pagada por mano de obra adjudicada)
     const remuneracionTrabajadores = periodOrders.reduce((sum, o) => {
@@ -684,8 +907,8 @@ export default function App() {
     const gananciaNeta = ingresosTotales - costoRepuestos - remuneracionTrabajadores - gastosFijos;
     const margenOperativo = ingresosTotales > 0 ? (gananciaNeta / ingresosTotales) * 100 : 0;
 
-    const ventaRepuestos = orderPartsRetailInflow;
-    const gananciaRepuestos = orderPartsRetailInflow - costoRepuestos;
+    const ventaRepuestos = orderPartsRetailInflow + directSalesInflow;
+    const gananciaRepuestos = ventaRepuestos - costoRepuestos;
 
     return {
       ingresosTotales,
@@ -697,7 +920,8 @@ export default function App() {
       ventaRepuestos,
       gananciaRepuestos,
       periodOrders,
-      periodTransactions
+      periodTransactions,
+      periodVentasIndividuales
     };
   };
 
@@ -710,6 +934,16 @@ export default function App() {
 
     metrics.periodOrders.forEach((o) => {
       o.repuestos.forEach((item) => {
+        const itemObj = repuestos.find((r) => r.id === item.id);
+        const cat = itemObj?.categoria || 'Insumos Varios';
+        const salePrice = Number(item.precio ?? itemObj?.precio ?? 0);
+        const saleVolume = salePrice * Number(item.qty || 0);
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + saleVolume;
+      });
+    });
+
+    metrics.periodVentasIndividuales.forEach((v) => {
+      (v.items || []).forEach((item) => {
         const itemObj = repuestos.find((r) => r.id === item.id);
         const cat = itemObj?.categoria || 'Insumos Varios';
         const salePrice = Number(item.precio ?? itemObj?.precio ?? 0);
@@ -867,6 +1101,30 @@ export default function App() {
           >
             <Coins className="w-3.5 h-3.5" />
             <span>Flujo Admin.</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ventas_directas')}
+            className={`flex items-center gap-2 text-xs font-semibold py-2 px-3 rounded-lg cursor-pointer shrink-0 transition-all ${
+              activeTab === 'ventas_directas'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <ShoppingBag className="w-3.5 h-3.5" />
+            <span>Ventas Directas</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('auditoria')}
+            className={`flex items-center gap-2 text-xs font-semibold py-2 px-3 rounded-lg cursor-pointer shrink-0 transition-all ${
+              activeTab === 'auditoria'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Bitácora / Auditoría</span>
           </button>
         </nav>
 
@@ -1090,12 +1348,28 @@ export default function App() {
               onDeleteTransaccion={handleDeleteTransaccion}
             />
           )}
+
+          {activeTab === 'ventas_directas' && (
+            <VentasIndividualesManager
+              ventasIndividuales={ventasIndividuales}
+              repuestos={repuestos}
+              onSaveVenta={handleSaveVentaIndividual}
+              onDeleteVenta={handleDeleteVentaIndividual}
+              onRefundItem={handleRefundVentaIndividualItem}
+            />
+          )}
+
+          {activeTab === 'auditoria' && (
+            <AuditLogViewer
+              logBorrados={logBorrados}
+            />
+          )}
         </main>
 
         {/* STATUS FOOTER BAR */}
         <footer className="h-8 bg-slate-200 border-t border-slate-300 flex items-center px-4 text-[10px] text-slate-600 shrink-0 justify-between">
           <div className="flex gap-4">
-            <span>DB Status: <span className="text-emerald-600 font-bold">Conectado (Local)</span></span>
+            <span>DB Status: <span className={supabaseConnected ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>{supabaseConnected ? "Conectado (Nube)" : "Conectado (Local)"}</span></span>
             <span>Last Sync: Activo</span>
           </div>
           <div>EconoGRAPH v1.0.4 • © 2026 Castellanos Motors</div>
