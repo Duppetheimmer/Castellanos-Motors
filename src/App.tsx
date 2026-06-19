@@ -21,6 +21,7 @@ import { ClientsVehicles } from './components/ClientsVehicles';
 import { LoginScreen } from './components/LoginScreen';
 import { VentasIndividualesManager } from './components/VentasIndividualesManager';
 import { AuditLogViewer } from './components/AuditLogViewer';
+import { RepuestosMovimientos } from './components/RepuestosMovimientos';
 import {
   Wrench,
   BarChart3,
@@ -345,7 +346,7 @@ export default function App() {
   }, []);
 
   // Current selected screen
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventario' | 'ordenes' | 'personal' | 'clientes' | 'flujo' | 'ventas_directas' | 'auditoria'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventario' | 'ordenes' | 'personal' | 'repuestos_movimientos' | 'flujo' | 'ventas_directas' | 'auditoria'>('dashboard');
 
   // Year-Month level selection for EconoGRAPH (e.g. '2025-05' or 'Todos')
   const [periodType, setPeriodType] = useState<'todos' | 'semanal' | 'mensual' | 'anual'>('todos');
@@ -1056,15 +1057,15 @@ export default function App() {
           </button>
 
           <button
-            onClick={() => setActiveTab('clientes')}
+            onClick={() => setActiveTab('repuestos_movimientos')}
             className={`flex items-center gap-2 text-xs font-semibold py-2 px-3 rounded-lg cursor-pointer shrink-0 transition-all ${
-              activeTab === 'clientes'
+              activeTab === 'repuestos_movimientos'
                 ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800'
             }`}
           >
-            <Briefcase className="w-3.5 h-3.5" />
-            <span>Clientes y Vehículos</span>
+            <Package className="w-3.5 h-3.5" />
+            <span>Movimientos Repuestos</span>
           </button>
 
           <button
@@ -1307,14 +1308,12 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'clientes' && (
-            <ClientsVehicles
+          {activeTab === 'repuestos_movimientos' && (
+            <RepuestosMovimientos
+              ordenes={ordenes}
+              ventasIndividuales={ventasIndividuales}
+              repuestos={repuestos}
               clientes={clientes}
-              vehiculos={vehiculos}
-              onSaveCliente={handleSaveCliente}
-              onDeleteCliente={handleDeleteCliente}
-              onSaveVehiculo={handleSaveVehiculo}
-              onDeleteVehiculo={handleDeleteVehiculo}
             />
           )}
 
