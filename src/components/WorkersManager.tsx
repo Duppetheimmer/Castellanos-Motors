@@ -41,6 +41,37 @@ export function WorkersManager({
   const [selectedPartQty, setSelectedPartQty] = useState<number>(1);
   const [selectedWorkFilter, setSelectedWorkFilter] = useState<string>('Todos');
   const [searchWorkTerm, setSearchWorkTerm] = useState<string>('');
+  const [timeRangeFilter, setTimeRangeFilter] = useState<'todos' | 'hoy' | 'semana' | 'mes'>('todos');
+  const [payoutStatusFilter, setPayoutStatusFilter] = useState<'todos' | 'pendiente' | 'pagado'>('todos');
+
+  // Helper date matches
+  const isToday = (dateStr: string) => {
+    if (!dateStr) return false;
+    const todayStr = new Date().toISOString().split('T')[0];
+    return dateStr === todayStr;
+  };
+
+  const isThisWeek = (dateStr: string) => {
+    if (!dateStr) return false;
+    const oDate = new Date(dateStr + 'T12:00:00');
+    const now = new Date();
+    // Sunday of this week
+    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+    startOfWeek.setHours(0,0,0,0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(endOfWeek.getDate() + 6);
+    endOfWeek.setHours(23,59,59,999);
+    return oDate >= startOfWeek && oDate <= endOfWeek;
+  };
+
+  const isThisMonth = (dateStr: string) => {
+    if (!dateStr) return false;
+    const parts = dateStr.split('-'); // YYYY-MM-DD
+    const now = new Date();
+    const currentYear = now.getFullYear().toString();
+    const currentMonth = (now.getMonth() + 1).toString().padStart(2, '0');
+    return parts[0] === currentYear && parts[1] === currentMonth;
+  };
 
   // Computes statistics per worker
   const getWorkerStats = (workerId: string, commissionPercent: number) => {
@@ -49,14 +80,23 @@ export function WorkersManager({
       (o) => o.trabajador_id === workerId && o.estado === 'terminada'
     );
     const totalLaborSold = completedOrders.reduce((sum, o) => sum + Number(o.labor_cost || 0), 0);
-    const totalEarnings = (totalLaborSold * Number(commissionPercent || 40)) / 100;
+    const totalEarnings = completedOrders.reduce((sum, o) => {
+      const rate = Number(o.comision_porcentaje ?? commissionPercent ?? 40);
+      return sum + (Number(o.labor_cost || 0) * rate) / 100;
+    }, 0);
 
     // Direct payout transactions made to this worker
     const paysRecorded = transacciones.filter(
       (t) => t.tipo === 'salida' && t.categoria === `Pago Mecánico: ${workerId}`
     );
     const totalPaid = paysRecorded.reduce((sum, t) => sum + Number(t.monto || 0), 0);
-    const pendingBalance = totalEarnings - totalPaid;
+    
+    // Balance is sum of commissions of unpaid completed jobs
+    const unpaidOrders = completedOrders.filter(o => !o.comision_pagada);
+    const pendingBalance = unpaidOrders.reduce((sum, o) => {
+      const rate = Number(o.comision_porcentaje ?? commissionPercent ?? 40);
+      return sum + (Number(o.labor_cost || 0) * rate) / 100;
+    }, 0);
 
     return {
       completedJobsCount: completedOrders.length,
@@ -204,7 +244,26 @@ export function WorkersManager({
     const desc = o.descripcion.toLowerCase();
     const matchSearch = workerName.includes(searchWorkTerm.toLowerCase()) || desc.includes(searchWorkTerm.toLowerCase());
     const matchWorker = selectedWorkFilter === 'Todos' || o.trabajador_id === selectedWorkFilter;
-    return matchSearch && matchWorker;
+    
+    // Time filter
+    let matchTime = true;
+    if (timeRangeFilter === 'hoy') {
+      matchTime = isToday(o.fecha);
+    } else if (timeRangeFilter === 'semana') {
+      matchTime = isThisWeek(o.fecha);
+    } else if (timeRangeFilter === 'mes') {
+      matchTime = isThisMonth(o.fecha);
+    }
+
+    // Payout status filter
+    let matchPayout = true;
+    if (payoutStatusFilter === 'pendiente') {
+      matchPayout = !o.comision_pagada;
+    } else if (payoutStatusFilter === 'pagado') {
+      matchPayout = !!o.comision_pagada;
+    }
+
+    return matchSearch && matchWorker && matchTime && matchPayout;
   });
 
   return (
@@ -412,7 +471,7 @@ export function WorkersManager({
 
       {/* Production Log History Section */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="p-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Historial de Trabajos y Producción de Ingresos</h3>
             <p className="text-[10.5px] text-slate-450 mt-0.5">Estudio financiero pormenorizado del valor del servicio, costos de repuestos usados y márgenes netos del negocio.</p>
@@ -431,8 +490,33 @@ export function WorkersManager({
               ))}
             </select>
 
+            {/* Time range filter */}
+            <select
+              value={timeRangeFilter}
+              onChange={(e) => setTimeRangeFilter(e.target.value as any)}
+              className="text-[11px] font-bold bg-slate-50 border border-slate-200 py-1.5 px-2.5 rounded-lg text-slate-600 focus:outline-none"
+              title="Filtrar por periodo de producción"
+            >
+              <option value="todos">Cualquier Fecha</option>
+              <option value="hoy">Hoy</option>
+              <option value="semana">Esta Semana</option>
+              <option value="mes">Este Mes</option>
+            </select>
+
+            {/* Payout status filter */}
+            <select
+              value={payoutStatusFilter}
+              onChange={(e) => setPayoutStatusFilter(e.target.value as any)}
+              className="text-[11px] font-bold bg-slate-50 border border-slate-200 py-1.5 px-2.5 rounded-lg text-slate-600 focus:outline-none"
+              title="Filtrar por estado del pago"
+            >
+              <option value="todos">Todos los Estados</option>
+              <option value="pendiente">Solo Pendientes</option>
+              <option value="pagado">Solo Pagados</option>
+            </select>
+
             {/* General Log Search */}
-            <div className="relative w-full sm:w-56">
+            <div className="relative w-full sm:w-48 lg:w-52">
               <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
               <input
                 type="text"
@@ -450,6 +534,7 @@ export function WorkersManager({
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-[10px] uppercase font-bold text-slate-550 italic">
                 <th className="py-2 px-3 text-center">Fecha</th>
+                <th className="py-2 px-3 text-center">Estado Pago</th>
                 <th className="py-2 px-3">Técnico encargado</th>
                 <th className="py-2 px-3">Descripción Trabajo</th>
                 <th className="py-2 px-3 text-right">Mano Obra ($)</th>
@@ -462,7 +547,7 @@ export function WorkersManager({
             <tbody className="divide-y divide-slate-150 text-xs">
               {filteredCompletedJobs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-[11px] text-slate-400 italic">
+                  <td colSpan={9} className="py-8 text-center text-[11px] text-slate-400 italic">
                     Sin registros de producción de trabajo para los criterios seleccionados.
                   </td>
                 </tr>
@@ -481,10 +566,39 @@ export function WorkersManager({
                   // Operating income for workshop
                   // Business profits on labor (Retail labor cost charged - paid commission) + profit from selling price over cost of spares
                   const workshopRevenue = (Number(o.labor_cost || 0) - comAmount) + partsNetGain;
+                  const isPaid = !!o.comision_pagada;
 
                   return (
-                    <tr key={o.id} className="hover:bg-slate-50 transition-colors">
+                    <tr key={o.id} className={`hover:bg-slate-50 transition-colors ${isPaid ? 'opacity-60 bg-slate-50/60 line-through decoration-slate-400' : ''}`}>
                       <td className="py-2.5 px-3 text-center font-mono text-[10.5px] text-slate-500 whitespace-nowrap">{o.fecha}</td>
+                      <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                        <button
+                          onClick={() => {
+                            onSaveOrden({
+                              ...o,
+                              comision_pagada: !o.comision_pagada
+                            });
+                          }}
+                          className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full cursor-pointer transition-all ${
+                            isPaid
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : 'bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200'
+                          }`}
+                          title={isPaid ? "Haga clic para marcar comisión como PENDIENTE" : "Haga clic para marcar comisión como PAGADA"}
+                        >
+                          {isPaid ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span className="no-underline">Pagado</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0 inline-block" />
+                              <span className="no-underline">Pendiente</span>
+                            </>
+                          )}
+                        </button>
+                      </td>
                       <td className="py-2.5 px-3">
                         <div className="font-bold text-slate-800 leading-tight">{workerName}</div>
                         <span className="text-[9.5px] text-slate-400 font-medium">Comisión: {comPercent}%</span>

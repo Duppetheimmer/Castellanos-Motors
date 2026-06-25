@@ -518,10 +518,18 @@ export default function App() {
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('ordenes').upsert({
+        const { error } = await supabase.from('ordenes').upsert({
           ...ord,
           repuestos: ord.repuestos // DB expects JSONB representation
         });
+        if (error) {
+          console.error('Error syncing work order to Supabase:', error);
+          if (error.message && error.message.includes('comision_porcentaje')) {
+            alert('Error de Base de Datos: La columna "comision_porcentaje" no existe en la tabla "ordenes" de tu base de datos Supabase.\n\nPara solucionarlo, por favor ve al SQL Editor de Supabase y ejecuta esta línea:\n\nALTER TABLE ordenes ADD COLUMN IF NOT EXISTS comision_porcentaje INTEGER NOT NULL DEFAULT 40;');
+          } else {
+            alert('Error al guardar la orden en la base de datos de la nube: ' + error.message);
+          }
+        }
       } catch (e) {
         console.error('Error syncing work order to Supabase:', e);
       }
@@ -549,7 +557,10 @@ export default function App() {
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('ordenes').delete().eq('id', id);
+        const { error } = await supabase.from('ordenes').delete().eq('id', id);
+        if (error) {
+          console.error('Error deleting work order from Supabase:', error);
+        }
       } catch (e) {
         console.error('Error deleting work order from Supabase:', e);
       }
@@ -565,7 +576,15 @@ export default function App() {
 
     if (isSupabaseConfigured()) {
       try {
-        await supabase.from('trabajadores').upsert(worker);
+        const { error } = await supabase.from('trabajadores').upsert(worker);
+        if (error) {
+          console.error('Error syncing worker to Supabase:', error);
+          if (error.message && error.message.includes('comision_porcentaje')) {
+            alert('Error de Base de Datos: La columna "comision_porcentaje" no existe en la tabla "trabajadores" de tu base de datos Supabase.\n\nPara solucionarlo, por favor ve al SQL Editor de Supabase y ejecuta esta línea:\n\nALTER TABLE trabajadores ADD COLUMN IF NOT EXISTS comision_porcentaje INTEGER NOT NULL DEFAULT 40;');
+          } else {
+            alert('Error al guardar el técnico en la base de datos de la nube: ' + error.message);
+          }
+        }
       } catch (e) {
         console.error('Error syncing worker to Supabase:', e);
       }
@@ -805,6 +824,35 @@ export default function App() {
       fecha: new Date().toISOString().split('T')[0],
       creado_en: new Date().toISOString()
     };
+
+    // Mark outstanding completed orders of this worker as paid
+    const updatedOrdenes = ordenes.map((o) => {
+      if (o.trabajador_id === workerId && o.estado === 'terminada' && !o.comision_pagada) {
+        return { ...o, comision_pagada: true };
+      }
+      return o;
+    });
+
+    setOrdenes(updatedOrdenes);
+    saveState('ordenes', updatedOrdenes);
+
+    // Persist each marked order to Supabase if configured
+    if (isSupabaseConfigured()) {
+      const unpaidOfWorker = ordenes.filter(
+        (o) => o.trabajador_id === workerId && o.estado === 'terminada' && !o.comision_pagada
+      );
+      for (const ord of unpaidOfWorker) {
+        try {
+          await supabase.from('ordenes').upsert({
+            ...ord,
+            comision_pagada: true,
+            repuestos: ord.repuestos
+          });
+        } catch (err) {
+          console.error('Error syncing comision_pagada to Supabase:', err);
+        }
+      }
+    }
 
     const updated = [newPayoutTx, ...transacciones];
     setTransacciones(updated);

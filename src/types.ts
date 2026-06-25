@@ -63,6 +63,7 @@ export interface Orden {
   trabajador_id: string | null;
   diagnostico: string | null;
   comision_porcentaje?: number; // Porcentaje de comisión histórico grabado en la orden
+  comision_pagada?: boolean;     // Indica si la comisión del técnico por este trabajo ya fue pagada
 }
 
 export interface Trabajador {
