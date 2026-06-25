@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShoppingBag, Plus, Trash2, Calendar, User, FileText, Percent, Info, AlertTriangle, CheckCircle, ArrowRight, RefreshCw, X } from 'lucide-react';
+import { ShoppingBag, Plus, Trash2, Calendar, User, FileText, Percent, Info, AlertTriangle, CheckCircle, ArrowRight, RefreshCw, X, Search } from 'lucide-react';
 import { VentaIndividual, VentaIndividualItem, Repuesto } from '../types';
 
 interface VentasIndividualesManagerProps {
@@ -21,6 +21,11 @@ export const VentasIndividualesManager: React.FC<VentasIndividualesManagerProps>
   const [errorVal, setErrorVal] = useState<string | null>(null);
   const [activeRefundVentaId, setActiveRefundVentaId] = useState<string | null>(null);
 
+  // Filter states
+  const [salesSearch, setSalesSearch] = useState('');
+  const [salesStartDate, setSalesStartDate] = useState('');
+  const [salesEndDate, setSalesEndDate] = useState('');
+
   // Form states
   const [clienteNombre, setClienteNombre] = useState('');
   const [clienteCedula, setClienteCedula] = useState('');
@@ -32,6 +37,26 @@ export const VentasIndividualesManager: React.FC<VentasIndividualesManagerProps>
   const [selectedRepuestoId, setSelectedRepuestoId] = useState('');
   const [customPrecio, setCustomPrecio] = useState<string>('');
   const [customQty, setCustomQty] = useState<number>(1);
+
+  // Filtered sales list computation
+  const filteredVentas = ventasIndividuales.filter((venta) => {
+    // Search filter
+    const matchesSearch = !salesSearch ||
+      venta.cliente_nombre.toLowerCase().includes(salesSearch.toLowerCase()) ||
+      (venta.cliente_cedula && venta.cliente_cedula.toLowerCase().includes(salesSearch.toLowerCase())) ||
+      venta.id.toLowerCase().includes(salesSearch.toLowerCase());
+      
+    // Exact Date range filter
+    let matchesDate = true;
+    if (salesStartDate) {
+      matchesDate = matchesDate && (venta.fecha >= salesStartDate);
+    }
+    if (salesEndDate) {
+      matchesDate = matchesDate && (venta.fecha <= salesEndDate);
+    }
+    
+    return matchesSearch && matchesDate;
+  });
 
   // Handle selected spare part change to preset its price
   const handleRepuestoSelection = (id: string) => {
@@ -428,17 +453,74 @@ export const VentasIndividualesManager: React.FC<VentasIndividualesManagerProps>
 
       {/* SALES RECORD HISTORY TABLE */}
       <div className="bg-white border border-slate-250 rounded-2xl p-6 shadow-xs">
-        <h3 className="text-xs uppercase tracking-widest font-black text-slate-400 mb-4">
-          Registro Histórico de Facturación Directa ({ventasIndividuales.length} Ventas)
-        </h3>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4 pb-2 border-b border-slate-100">
+          <h3 className="text-xs uppercase tracking-widest font-black text-slate-400">
+            Registro Histórico de Facturación Directa ({filteredVentas.length} de {ventasIndividuales.length} Ventas)
+          </h3>
+        </div>
+
+        {ventasIndividuales.length > 0 && (
+          <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200/60 mb-4 text-xs">
+            {/* Search Input */}
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar por cliente, cédula, id..."
+                value={salesSearch}
+                onChange={(e) => setSalesSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700"
+              />
+            </div>
+
+            {/* Exact Date Range Filter */}
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+              <div className="flex items-center gap-1 bg-white border border-slate-200 py-1 px-2 rounded-lg text-xs text-slate-600 shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="font-semibold text-[10px] text-slate-500">Desde:</span>
+                <input
+                  type="date"
+                  value={salesStartDate}
+                  onChange={(e) => setSalesStartDate(e.target.value)}
+                  className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+                />
+                <span className="font-semibold text-[10px] text-slate-500">Hasta:</span>
+                <input
+                  type="date"
+                  value={salesEndDate}
+                  onChange={(e) => setSalesEndDate(e.target.value)}
+                  className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+                />
+                {(salesStartDate || salesEndDate || salesSearch) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSalesStartDate('');
+                      setSalesEndDate('');
+                      setSalesSearch('');
+                    }}
+                    className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-black cursor-pointer transition-colors border border-slate-200"
+                    title="Limpiar filtros"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {ventasIndividuales.length === 0 ? (
           <div className="p-12 border border-dashed border-slate-200 rounded-xl text-center text-slate-450 text-xs italic">
             Ninguna venta directa ha sido efectuada todavía. Utiliza el botón "Nueva Venta Directa" para registrar la primera.
           </div>
+        ) : filteredVentas.length === 0 ? (
+          <div className="p-12 border border-dashed border-slate-200 rounded-xl text-center text-slate-450 text-xs italic">
+            No se encontraron ventas para los filtros seleccionados.
+          </div>
         ) : (
           <div className="space-y-4">
-            {ventasIndividuales.map((venta) => {
+            {filteredVentas.map((venta) => {
               const totalItemsCount = venta.items.reduce((sum, i) => sum + i.qty, 0);
 
               return (

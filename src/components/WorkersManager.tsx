@@ -3,7 +3,7 @@ import { Trabajador, Orden, TransaccionExtra, Repuesto, OrdenRepuestoItem } from
 import { 
   Users, Plus, Percent, DollarSign, Calendar, Phone, Award, 
   ClipboardList, Wallet, Trash2, Search, Info, TrendingUp, 
-  Sparkles, CheckCircle2, ShoppingCart, Tag, ArrowRight 
+  Sparkles, CheckCircle2, ShoppingCart, Tag, ArrowRight, AlertCircle 
 } from 'lucide-react';
 
 interface WorkersManagerProps {
@@ -17,6 +17,7 @@ interface WorkersManagerProps {
   onSaveOrden: (orden: Orden) => void;
   onDeleteOrden: (id: string) => void;
   onUpdateInventoryStock: (sparePartsUsed: { id: string; qty: number }[]) => void;
+  onAddTransaccion: (tx: TransaccionExtra) => void;
 }
 
 export function WorkersManager({
@@ -29,7 +30,8 @@ export function WorkersManager({
   onRecordPayout,
   onSaveOrden,
   onDeleteOrden,
-  onUpdateInventoryStock
+  onUpdateInventoryStock,
+  onAddTransaccion
 }: WorkersManagerProps) {
   const [editingTrabajador, setEditingTrabajador] = useState<Partial<Trabajador> | null>(null);
   const [payoutWorkerId, setPayoutWorkerId] = useState<string | null>(null);
@@ -41,8 +43,43 @@ export function WorkersManager({
   const [selectedPartQty, setSelectedPartQty] = useState<number>(1);
   const [selectedWorkFilter, setSelectedWorkFilter] = useState<string>('Todos');
   const [searchWorkTerm, setSearchWorkTerm] = useState<string>('');
-  const [timeRangeFilter, setTimeRangeFilter] = useState<'todos' | 'hoy' | 'semana' | 'mes'>('todos');
+  const [timeRangeFilter, setTimeRangeFilter] = useState<'todos' | 'hoy' | 'semana' | 'mes' | 'rango'>('todos');
+  const [workerStartDate, setWorkerStartDate] = useState<string>('');
+  const [workerEndDate, setWorkerEndDate] = useState<string>('');
   const [payoutStatusFilter, setPayoutStatusFilter] = useState<'todos' | 'pendiente' | 'pagado'>('todos');
+
+  // Payroll module states
+  const [showPayrollModal, setShowPayrollModal] = useState(false);
+  const [selectedPayrollWorkers, setSelectedPayrollWorkers] = useState<string[]>([]);
+  const [customPayrollNote, setCustomPayrollNote] = useState('');
+
+  // Payroll Helpers
+  const isSaturday = new Date().getDay() === 6;
+
+  const getPayrollThisWeek = () => {
+    const today = new Date();
+    // Start of current week (last Sunday)
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() - today.getDay());
+    sunday.setHours(0, 0, 0, 0);
+
+    // End of current week (next Saturday)
+    const saturday = new Date(sunday);
+    saturday.setDate(sunday.getDate() + 6);
+    saturday.setHours(23, 59, 59, 999);
+
+    return transacciones.filter((t) => {
+      if (t.tipo !== 'salida') return false;
+      const isNomina = t.categoria.toLowerCase().includes('nómina') || t.descripcion.toLowerCase().includes('nómina');
+      if (!isNomina) return false;
+      
+      const tDate = new Date(t.fecha + 'T12:00:00');
+      return tDate >= sunday && tDate <= saturday;
+    });
+  };
+
+  const payrollsThisWeek = getPayrollThisWeek();
+  const isPayrollPaidThisWeek = payrollsThisWeek.length > 0;
 
   // Helper date matches
   const isToday = (dateStr: string) => {
@@ -81,7 +118,7 @@ export function WorkersManager({
     );
     const totalLaborSold = completedOrders.reduce((sum, o) => sum + Number(o.labor_cost || 0), 0);
     const totalEarnings = completedOrders.reduce((sum, o) => {
-      const rate = Number(o.comision_porcentaje ?? commissionPercent ?? 40);
+      const rate = Number(commissionPercent ?? o.comision_porcentaje ?? 40);
       return sum + (Number(o.labor_cost || 0) * rate) / 100;
     }, 0);
 
@@ -94,7 +131,7 @@ export function WorkersManager({
     // Balance is sum of commissions of unpaid completed jobs
     const unpaidOrders = completedOrders.filter(o => !o.comision_pagada);
     const pendingBalance = unpaidOrders.reduce((sum, o) => {
-      const rate = Number(o.comision_porcentaje ?? commissionPercent ?? 40);
+      const rate = Number(commissionPercent ?? o.comision_porcentaje ?? 40);
       return sum + (Number(o.labor_cost || 0) * rate) / 100;
     }, 0);
 
@@ -147,6 +184,39 @@ export function WorkersManager({
     onRecordPayout(payoutWorkerId, payoutAmount);
     setPayoutWorkerId(null);
     setPayoutAmount(0);
+  };
+
+  const handleSavePayroll = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedPayrollWorkers.length === 0) {
+      alert('Debe seleccionar al menos un trabajador para procesar el pago.');
+      return;
+    }
+
+    const workerNames = trabajadores
+      .filter((t) => selectedPayrollWorkers.includes(t.id))
+      .map((t) => t.nombre)
+      .join(', ');
+
+    const totalAmount = 50 * selectedPayrollWorkers.length;
+
+    const payrollTx: TransaccionExtra = {
+      id: `NOM-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+      tipo: 'salida',
+      categoria: 'Nómina',
+      descripcion: `Pago de nómina semanal ($50 c/u) para: ${workerNames}.${customPayrollNote ? ' Nota: ' + customPayrollNote : ''}`,
+      monto: totalAmount,
+      fecha: new Date().toISOString().split('T')[0],
+      creado_en: new Date().toISOString()
+    };
+
+    onAddTransaccion(payrollTx);
+    alert(`Se ha registrado el pago de nómina de $${totalAmount}.00 USD para: ${workerNames} con éxito.`);
+    
+    // Close modal & reset fields
+    setShowPayrollModal(false);
+    setSelectedPayrollWorkers([]);
+    setCustomPayrollNote('');
   };
 
   // Logging Production Form Actions
@@ -222,7 +292,8 @@ export function WorkersManager({
       estado: 'terminada',
       creado_en: new Date().toISOString(),
       trabajador_id: loggingProduction.trabajador_id,
-      diagnostico: 'Grabado directamente'
+      diagnostico: 'Grabado directamente',
+      comision_porcentaje: loggingProduction.comision_porcentaje ?? Number(trabajadores.find(t => t.id === loggingProduction.trabajador_id)?.comision_porcentaje ?? 40)
     };
 
     // Discount parts from stock
@@ -253,6 +324,15 @@ export function WorkersManager({
       matchTime = isThisWeek(o.fecha);
     } else if (timeRangeFilter === 'mes') {
       matchTime = isThisMonth(o.fecha);
+    } else if (timeRangeFilter === 'rango') {
+      let isWithin = true;
+      if (workerStartDate) {
+        isWithin = isWithin && (o.fecha >= workerStartDate);
+      }
+      if (workerEndDate) {
+        isWithin = isWithin && (o.fecha <= workerEndDate);
+      }
+      matchTime = isWithin;
     }
 
     // Payout status filter
@@ -312,6 +392,67 @@ export function WorkersManager({
             <span className="text-base font-black text-slate-900 block leading-tight mt-0.5">${totalCommissionsPending.toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
             <span className="text-[9.5px] font-semibold text-amber-600 block">Pendiente por pagar</span>
           </div>
+        </div>
+      </div>
+
+      {/* Módulo de Nómina Semanal */}
+      <div className="bg-gradient-to-r from-slate-900 to-slate-800 rounded-xl p-5 text-white shadow-md border border-slate-700/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+        <div className="space-y-1.5 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded">
+              Módulo de Nómina
+            </div>
+            {isSaturday && !isPayrollPaidThisWeek && (
+              <span className="flex h-2 w-2 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              </span>
+            )}
+          </div>
+          
+          <h3 className="text-sm font-black tracking-tight flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-emerald-400" />
+            Nómina Semanal de Mecánicos ($50 USD c/u)
+          </h3>
+          
+          <div className="text-[11px] text-slate-300 leading-normal max-w-2xl">
+            {isPayrollPaidThisWeek ? (
+              <span className="text-emerald-400 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 inline" /> 
+                ¡La nómina de esta semana ya ha sido pagada! Se registraron {payrollsThisWeek.length} transacciones de nómina por un total de ${payrollsThisWeek.reduce((s, x) => s + x.monto, 0).toLocaleString('es-VE', { minimumFractionDigits: 2 })} USD.
+              </span>
+            ) : isSaturday ? (
+              <span className="text-rose-400 font-semibold flex items-center gap-1.5 animate-pulse">
+                <AlertCircle className="w-4 h-4 inline shrink-0" />
+                Hoy es Sábado de Nómina. Recuerda registrar el pago semanal de $50 por cada trabajador para mantener las cuentas al día.
+              </span>
+            ) : (
+              <span>
+                El pago regular de nómina de $50 por cada trabajador se realiza los sábados. Puede registrar un <strong className="text-emerald-300">pago anticipado</strong> en cualquier momento si lo requiere.
+              </span>
+            )}
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3 shrink-0 w-full md:w-auto">
+          <button
+            onClick={() => {
+              setSelectedPayrollWorkers(trabajadores.map(t => t.id));
+              setCustomPayrollNote('');
+              setShowPayrollModal(true);
+            }}
+            disabled={trabajadores.length === 0}
+            className={`w-full md:w-auto text-center px-4 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              isPayrollPaidThisWeek
+                ? 'bg-slate-700/60 text-slate-300 hover:bg-slate-700 hover:text-white border border-slate-600'
+                : isSaturday
+                ? 'bg-emerald-500 text-white hover:bg-emerald-400 shadow-md shadow-emerald-500/10'
+                : 'bg-blue-600 text-white hover:bg-blue-500'
+            } ${trabajadores.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            {isPayrollPaidThisWeek ? 'Registrar Nómina Adicional' : isSaturday ? 'Registrar Nómina de Sábado' : 'Registrar Pago Anticipado'}
+          </button>
         </div>
       </div>
 
@@ -501,7 +642,39 @@ export function WorkersManager({
               <option value="hoy">Hoy</option>
               <option value="semana">Esta Semana</option>
               <option value="mes">Este Mes</option>
+              <option value="rango">Rango de Fecha Exacto 📅</option>
             </select>
+
+            {timeRangeFilter === 'rango' && (
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 py-1 px-2 rounded-lg text-[11px] text-slate-600">
+                <span className="font-semibold text-[10px] text-slate-500">Desde:</span>
+                <input
+                  type="date"
+                  value={workerStartDate}
+                  onChange={(e) => setWorkerStartDate(e.target.value)}
+                  className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 font-semibold w-24 text-[10.5px]"
+                />
+                <span className="font-semibold text-[10px] text-slate-500">Hasta:</span>
+                <input
+                  type="date"
+                  value={workerEndDate}
+                  onChange={(e) => setWorkerEndDate(e.target.value)}
+                  className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 font-semibold w-24 text-[10.5px]"
+                />
+                {(workerStartDate || workerEndDate) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setWorkerStartDate('');
+                      setWorkerEndDate('');
+                    }}
+                    className="text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1.5 py-0.5 rounded font-black cursor-pointer"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Payout status filter */}
             <select
@@ -555,7 +728,7 @@ export function WorkersManager({
                 filteredCompletedJobs.map((o) => {
                   const workerObj = trabajadores.find(t => t.id === o.trabajador_id);
                   const workerName = workerObj?.nombre || 'Desconocido';
-                  const comPercent = Number(o.comision_porcentaje ?? workerObj?.comision_porcentaje ?? 40);
+                  const comPercent = Number(workerObj?.comision_porcentaje ?? o.comision_porcentaje ?? 40);
                   const comAmount = (Number(o.labor_cost || 0) * comPercent) / 100;
 
                   // Spares analysis
@@ -675,7 +848,15 @@ export function WorkersManager({
                   <select
                     required
                     value={loggingProduction.trabajador_id || ''}
-                    onChange={(e) => setLoggingProduction({ ...loggingProduction, trabajador_id: e.target.value })}
+                    onChange={(e) => {
+                      const workerId = e.target.value;
+                      const workerObj = trabajadores.find(t => t.id === workerId);
+                      setLoggingProduction({
+                        ...loggingProduction,
+                        trabajador_id: workerId,
+                        comision_porcentaje: workerObj ? workerObj.comision_porcentaje : 40
+                      });
+                    }}
                     className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none"
                   >
                     <option value="">Selecciona Técnico...</option>
@@ -1047,6 +1228,132 @@ export function WorkersManager({
                   className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-505 px-5 py-2 rounded-lg cursor-pointer"
                 >
                   Liquidar Pago
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Payroll Modal Overlay */}
+      {showPayrollModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
+            <div className="bg-slate-900 text-white p-4">
+              <h3 className="text-xs font-black tracking-tight flex items-center gap-1.5 uppercase">
+                <DollarSign className="w-4 h-4 text-emerald-400 animate-pulse" />
+                Registrar Pago de Nómina Semanal
+              </h3>
+              <p className="text-[10.5px] text-slate-300 mt-1">
+                La tarifa establecida es de <strong className="text-emerald-300">$50.00 USD</strong> por cada trabajador activo seleccionado.
+              </p>
+            </div>
+
+            <form onSubmit={handleSavePayroll} className="p-4 space-y-4 text-left">
+              <div>
+                <label className="block text-xs font-black text-slate-600 mb-2 uppercase tracking-wide">
+                  Seleccionar Trabajadores a Pagar:
+                </label>
+                
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {trabajadores.map((t) => {
+                    const isChecked = selectedPayrollWorkers.includes(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className={`flex items-center justify-between p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
+                          isChecked
+                            ? 'bg-emerald-50/50 border-emerald-200 text-slate-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              if (isChecked) {
+                                setSelectedPayrollWorkers(selectedPayrollWorkers.filter(id => id !== t.id));
+                              } else {
+                                setSelectedPayrollWorkers([...selectedPayrollWorkers, t.id]);
+                              }
+                            }}
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                          />
+                          <div>
+                            <span className="font-bold">{t.nombre}</span>
+                            <span className="text-[10px] text-slate-400 block">{t.especialidad}</span>
+                          </div>
+                        </div>
+                        <span className="font-mono font-black text-emerald-600">$50.00 USD</span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between mt-2 text-[10px] text-slate-400">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPayrollWorkers(trabajadores.map(t => t.id))}
+                    className="hover:text-slate-800 underline cursor-pointer font-bold bg-transparent border-0 outline-none"
+                  >
+                    Seleccionar Todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPayrollWorkers([])}
+                    className="hover:text-slate-800 underline cursor-pointer font-bold bg-transparent border-0 outline-none"
+                  >
+                    Deseleccionar Todos
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-600 mb-1 uppercase tracking-wide">
+                  Nota / Observaciones Adicionales:
+                </label>
+                <textarea
+                  rows={2}
+                  value={customPayrollNote}
+                  onChange={(e) => setCustomPayrollNote(e.target.value)}
+                  placeholder="Ej. Pago anticipado, descuentos, semana correspondiente..."
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400 resize-none text-slate-800"
+                />
+              </div>
+
+              {/* Total Calculation breakdown */}
+              <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 space-y-1.5">
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span>Mecánicos Seleccionados:</span>
+                  <span className="font-bold">{selectedPayrollWorkers.length} de {trabajadores.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-slate-600">
+                  <span>Tarifa Fija por Mecánico:</span>
+                  <span className="font-mono font-bold">$50.00 USD</span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-800 uppercase">Monto Total Nómina:</span>
+                  <span className="text-sm font-mono font-black text-emerald-600">
+                    ${(50 * selectedPayrollWorkers.length).toLocaleString('es-VE', { minimumFractionDigits: 2 })} USD
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-4 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowPayrollModal(false)}
+                  className="text-xs font-bold text-slate-500 hover:text-slate-800 bg-slate-50 px-4 py-2 rounded-lg cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={selectedPayrollWorkers.length === 0}
+                  className="text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 disabled:cursor-not-allowed px-5 py-2 rounded-lg cursor-pointer transition-all shadow-sm"
+                >
+                  Registrar Nómina
                 </button>
               </div>
             </form>

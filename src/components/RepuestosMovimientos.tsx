@@ -53,6 +53,8 @@ export const RepuestosMovimientos: React.FC<RepuestosMovimientosProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [metodoFilter, setMetodoFilter] = useState<'todos' | 'venta_directa' | 'orden_trabajo'>('todos');
   const [categoriaFilter, setCategoriaFilter] = useState<string>('todos');
+  const [movStartDate, setMovStartDate] = useState<string>('');
+  const [movEndDate, setMovEndDate] = useState<string>('');
   const [sortBy, setSortBy] = useState<'fecha_desc' | 'fecha_asc' | 'utilidad_desc' | 'cantidad_desc'>('fecha_desc');
 
   // Convert all direct sales and completed/in-progress work orders to unified list
@@ -171,6 +173,14 @@ export const RepuestosMovimientos: React.FC<RepuestosMovimientosProps> = ({
       );
     }
 
+    // Exact Date Range Filter
+    if (movStartDate) {
+      result = result.filter(m => m.fecha >= movStartDate);
+    }
+    if (movEndDate) {
+      result = result.filter(m => m.fecha <= movEndDate);
+    }
+
     // Sorting logic
     result.sort((a, b) => {
       if (sortBy === 'fecha_desc') {
@@ -189,7 +199,7 @@ export const RepuestosMovimientos: React.FC<RepuestosMovimientosProps> = ({
     });
 
     return result;
-  }, [todosMovimientos, metodoFilter, categoriaFilter, searchTerm, sortBy]);
+  }, [todosMovimientos, metodoFilter, categoriaFilter, searchTerm, movStartDate, movEndDate, sortBy]);
 
   // KPI Calculations
   const metrics = useMemo(() => {
@@ -376,6 +386,38 @@ export const RepuestosMovimientos: React.FC<RepuestosMovimientosProps> = ({
                 <option key={cat} value={cat}>{cat}</option>
               ))}
             </select>
+
+            {/* Exact Date Range Filter */}
+            <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 py-1.5 px-2.5 rounded-lg text-xs text-slate-600 shrink-0">
+              <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="font-semibold text-[10px] text-slate-500">Desde:</span>
+              <input
+                type="date"
+                value={movStartDate}
+                onChange={(e) => setMovStartDate(e.target.value)}
+                className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+              />
+              <span className="font-semibold text-[10px] text-slate-500">Hasta:</span>
+              <input
+                type="date"
+                value={movEndDate}
+                onChange={(e) => setMovEndDate(e.target.value)}
+                className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+              />
+              {(movStartDate || movEndDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMovStartDate('');
+                    setMovEndDate('');
+                  }}
+                  className="text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1.5 py-0.5 rounded font-black cursor-pointer transition-colors"
+                  title="Limpiar rango de fechas"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
 
             {/* Sort Dropdown */}
             <select

@@ -77,7 +77,8 @@ CREATE TABLE IF NOT EXISTS ordenes (
     creado_en TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     trabajador_id TEXT REFERENCES trabajadores(id) ON DELETE SET NULL,
     diagnostico TEXT DEFAULT '',
-    comision_porcentaje INTEGER NOT NULL DEFAULT 40 -- Porcentaje de comisión grabado al guardar/cerrar la orden para preservar histórico
+    comision_porcentaje INTEGER NOT NULL DEFAULT 40, -- Porcentaje de comisión grabado al guardar/cerrar la orden para preservar histórico
+    comision_pagada BOOLEAN NOT NULL DEFAULT FALSE -- Indica si la comisión del técnico por este trabajo ya fue pagada
 );
 
 -- 6. TABLA: Solicitudes de Repuestos (Mecánico a Almacén)
@@ -142,6 +143,31 @@ ALTER TABLE solicitudes DISABLE ROW LEVEL SECURITY;
 ALTER TABLE transacciones_extra DISABLE ROW LEVEL SECURITY;
 ALTER TABLE gastos_alternos DISABLE ROW LEVEL SECURITY;
 ALTER TABLE historial_pagos DISABLE ROW LEVEL SECURITY;
+
+-- 10. TABLA: Ventas Individuales (Facturación Directa sin Órdenes de Trabajo)
+CREATE TABLE IF NOT EXISTS ventas_individuales (
+    id TEXT PRIMARY KEY DEFAULT ('VNT-' || UPPER(SUBSTRING(MD5(RANDOM()::TEXT), 1, 6))),
+    fecha DATE DEFAULT CURRENT_DATE,
+    cliente_nombre TEXT NOT NULL,
+    cliente_cedula TEXT DEFAULT '',
+    items JSONB DEFAULT '[]'::jsonb, -- Array de items de venta [{id, nombre, qty, precio, costo, qty_devuelta}]
+    tasa_usdt NUMERIC(10, 4) DEFAULT 1.0000,
+    total_usd NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 11. TABLA: Historial de Borrados (Registro de Auditoría de Eliminaciones)
+CREATE TABLE IF NOT EXISTS historial_borrados (
+    id TEXT PRIMARY KEY DEFAULT ('LOG-' || UPPER(SUBSTRING(MD5(RANDOM()::TEXT), 1, 6))),
+    fecha_suceso TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    tipo_entidad TEXT CHECK (tipo_entidad IN ('venta', 'orden', 'transaccion', 'devolucion_repuesto')) NOT NULL,
+    descripcion_auditoria TEXT NOT NULL,
+    monto NUMERIC(10, 2) DEFAULT 0.00,
+    usuario TEXT DEFAULT 'Sistema'
+);
+
+ALTER TABLE ventas_individuales DISABLE ROW LEVEL SECURITY;
+ALTER TABLE historial_borrados DISABLE ROW LEVEL SECURITY;
 
 -- SEED DATA DE PRUEBA (Opcional):
 -- INSERT INTO clientes (id, nombre, telefono, cedula, observaciones) VALUES ('CLI-A1B2', 'Carlos Mendoza', '0414-123-4567', 'V-15.342.198', 'Cliente frecuente');

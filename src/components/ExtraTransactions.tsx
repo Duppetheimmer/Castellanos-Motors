@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TransaccionExtra } from '../types';
-import { DollarSign, Plus, Trash2, ArrowUpRight, ArrowDownRight, Tag, BookOpen, Calendar, HelpCircle } from 'lucide-react';
+import { DollarSign, Plus, Trash2, ArrowUpRight, ArrowDownRight, Tag, BookOpen, Calendar, HelpCircle, Search } from 'lucide-react';
 
 interface ExtraTransactionsProps {
   transacciones: TransaccionExtra[];
@@ -16,8 +16,32 @@ export function ExtraTransactions({ transacciones, onAddTransaccion, onDeleteTra
   const [monto, setMonto] = useState<number>(0);
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
 
+  // Filters state variables
+  const [txStartDate, setTxStartDate] = useState<string>('');
+  const [txEndDate, setTxEndDate] = useState<string>('');
+  const [txSearch, setTxSearch] = useState<string>('');
+
   // Exclude mechanical salary payments to show true separate office expenses
-  const displayedTxs = transacciones.filter(t => !t.categoria.startsWith('Pago Mecánico:'));
+  const baseTxs = transacciones.filter(t => !t.categoria.startsWith('Pago Mecánico:'));
+
+  const displayedTxs = baseTxs.filter((t) => {
+    // Search filter
+    const matchesSearch = !txSearch || 
+      t.descripcion.toLowerCase().includes(txSearch.toLowerCase()) || 
+      t.categoria.toLowerCase().includes(txSearch.toLowerCase()) ||
+      t.id.toLowerCase().includes(txSearch.toLowerCase());
+      
+    // Exact Date range filter
+    let matchesDate = true;
+    if (txStartDate) {
+      matchesDate = matchesDate && (t.fecha >= txStartDate);
+    }
+    if (txEndDate) {
+      matchesDate = matchesDate && (t.fecha <= txEndDate);
+    }
+    
+    return matchesSearch && matchesDate;
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,6 +107,56 @@ export function ExtraTransactions({ transacciones, onAddTransaccion, onDeleteTra
           >
             Registrar Movimiento
           </button>
+        </div>
+      </div>
+
+      {/* Search and Filters Bar */}
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-xl border border-slate-100 shadow-xs">
+        {/* Search Input */}
+        <div className="relative w-full md:w-80">
+          <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por descripción, categoría, id..."
+            value={txSearch}
+            onChange={(e) => setTxSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+        </div>
+
+        {/* Exact Date Range Filter */}
+        <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 py-1.5 px-2.5 rounded-lg text-xs text-slate-600 shrink-0">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="font-semibold text-[10px] text-slate-500">Desde:</span>
+            <input
+              type="date"
+              value={txStartDate}
+              onChange={(e) => setTxStartDate(e.target.value)}
+              className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+            />
+            <span className="font-semibold text-[10px] text-slate-500">Hasta:</span>
+            <input
+              type="date"
+              value={txEndDate}
+              onChange={(e) => setTxEndDate(e.target.value)}
+              className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+            />
+            {(txStartDate || txEndDate || txSearch) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTxStartDate('');
+                  setTxEndDate('');
+                  setTxSearch('');
+                }}
+                className="text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1.5 py-0.5 rounded font-black cursor-pointer transition-colors"
+                title="Limpiar filtros"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

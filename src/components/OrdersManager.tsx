@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Orden, Cliente, Vehiculo, Trabajador, Repuesto, EstadoOrden, OrdenRepuestoItem } from '../types';
-import { FileText, Plus, Search, Edit2, Play, CheckCircle2, AlertCircle, ShoppingCart, HelpCircle, User, Wrench, RefreshCw } from 'lucide-react';
+import { FileText, Plus, Search, Edit2, Play, CheckCircle2, AlertCircle, ShoppingCart, HelpCircle, User, Wrench, RefreshCw, Calendar } from 'lucide-react';
 
 interface OrdersManagerProps {
   ordenes: Orden[];
@@ -11,6 +11,8 @@ interface OrdersManagerProps {
   onSaveOrden: (orden: Orden) => void;
   onDeleteOrden: (id: string) => void;
   onUpdateInventoryStock: (sparePartsUsed: { id: string; qty: number }[]) => void;
+  onSaveCliente: (cliente: Cliente) => void;
+  onSaveVehiculo: (vehiculo: Vehiculo) => void;
 }
 
 export function OrdersManager({
@@ -21,12 +23,133 @@ export function OrdersManager({
   repuestos,
   onSaveOrden,
   onDeleteOrden,
-  onUpdateInventoryStock
+  onUpdateInventoryStock,
+  onSaveCliente,
+  onSaveVehiculo
 }: OrdersManagerProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEstado, setSelectedEstado] = useState<string>('Todas');
   const [selectedMecanico, setSelectedMecanico] = useState<string>('Todos');
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
   const [editingOrden, setEditingOrden] = useState<Partial<Orden> | null>(null);
+
+  // States for Quick-add overlays
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [showAddVehiculo, setShowAddVehiculo] = useState(false);
+
+  // States for Quick-add Client Form
+  const [quickClient, setQuickClient] = useState({
+    nombre: '',
+    cedula: '',
+    telefono: '',
+    email: '',
+    direccion: '',
+    observaciones: ''
+  });
+
+  // States for Quick-add Vehicle Form
+  const [quickVehiculo, setQuickVehiculo] = useState({
+    marca: '',
+    modelo: '',
+    placa: '',
+    anio: new Date().getFullYear(),
+    color: '#A1A1A1',
+    km: 0,
+    observaciones: ''
+  });
+
+  const handleQuickSaveClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickClient.nombre || !quickClient.cedula) {
+      alert('Por favor complete los campos obligatorios: Nombre y Cédula');
+      return;
+    }
+
+    const newClientId = `CLI-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+    const clientToSave: Cliente = {
+      id: newClientId,
+      nombre: quickClient.nombre,
+      cedula: quickClient.cedula,
+      telefono: quickClient.telefono || '',
+      email: quickClient.email || '',
+      direccion: quickClient.direccion || '',
+      nacimiento: '',
+      observaciones: quickClient.observaciones || '',
+      fecha_reg: new Date().toISOString().split('T')[0]
+    };
+
+    onSaveCliente(clientToSave);
+    
+    // Automatically select the newly created client
+    if (editingOrden) {
+      setEditingOrden({
+        ...editingOrden,
+        cliente_id: newClientId,
+        auto_id: '' // reset auto because client changed
+      });
+    }
+
+    // Reset fields and close
+    setQuickClient({
+      nombre: '',
+      cedula: '',
+      telefono: '',
+      email: '',
+      direccion: '',
+      observaciones: ''
+    });
+    setShowAddClient(false);
+  };
+
+  const handleQuickSaveVehiculo = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingOrden?.cliente_id) {
+      alert('Debe tener un cliente seleccionado para agregarle un vehículo.');
+      return;
+    }
+    if (!quickVehiculo.marca || !quickVehiculo.modelo || !quickVehiculo.placa) {
+      alert('Por favor complete los campos obligatorios: Marca, Modelo y Placa');
+      return;
+    }
+
+    const newVehId = `VEH-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+    const vehToSave: Vehiculo = {
+      id: newVehId,
+      cliente_id: editingOrden.cliente_id,
+      marca: quickVehiculo.marca,
+      modelo: quickVehiculo.modelo,
+      placa: quickVehiculo.placa.toUpperCase(),
+      anio: Number(quickVehiculo.anio ?? new Date().getFullYear()),
+      color: quickVehiculo.color || '#A1A1A1',
+      vin: '',
+      km: Number(quickVehiculo.km ?? 0),
+      observaciones: quickVehiculo.observaciones || '',
+      fecha_reg: new Date().toISOString().split('T')[0]
+    };
+
+    onSaveVehiculo(vehToSave);
+
+    // Automatically select the newly created vehicle
+    if (editingOrden) {
+      setEditingOrden({
+        ...editingOrden,
+        auto_id: newVehId
+      });
+    }
+
+    // Reset fields and close
+    setQuickVehiculo({
+      marca: '',
+      modelo: '',
+      placa: '',
+      anio: new Date().getFullYear(),
+      color: '#A1A1A1',
+      km: 0,
+      observaciones: ''
+    });
+    setShowAddVehiculo(false);
+  };
 
   // Helper selectors
   const getClienteName = (id: string | null) => {
@@ -59,7 +182,15 @@ export function OrdersManager({
     const matchesEstado = selectedEstado === 'Todas' || o.estado === selectedEstado;
     const matchesMecanico = selectedMecanico === 'Todos' || o.trabajador_id === selectedMecanico;
 
-    return matchesSearch && matchesEstado && matchesMecanico;
+    let matchesDate = true;
+    if (filterStartDate) {
+      matchesDate = matchesDate && (o.fecha >= filterStartDate);
+    }
+    if (filterEndDate) {
+      matchesDate = matchesDate && (o.fecha <= filterEndDate);
+    }
+
+    return matchesSearch && matchesEstado && matchesMecanico && matchesDate;
   });
 
   // Handle addition of a part into the order edit/creation form
@@ -182,6 +313,38 @@ export function OrdersManager({
 
         {/* Filters Panel */}
         <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-end">
+          {/* Exact Date Range Filter */}
+          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 py-1.5 px-2.5 rounded-lg text-xs text-slate-600 shrink-0">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span className="font-semibold text-[10px] text-slate-500">Desde:</span>
+            <input
+              type="date"
+              value={filterStartDate}
+              onChange={(e) => setFilterStartDate(e.target.value)}
+              className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+            />
+            <span className="font-semibold text-[10px] text-slate-500">Hasta:</span>
+            <input
+              type="date"
+              value={filterEndDate}
+              onChange={(e) => setFilterEndDate(e.target.value)}
+              className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+            />
+            {(filterStartDate || filterEndDate) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterStartDate('');
+                  setFilterEndDate('');
+                }}
+                className="text-[9px] bg-slate-200 hover:bg-slate-300 text-slate-700 px-1.5 py-0.5 rounded font-black cursor-pointer transition-colors"
+                title="Limpiar rango de fechas"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+
           <select
             value={selectedEstado}
             onChange={(e) => setSelectedEstado(e.target.value)}
@@ -231,7 +394,7 @@ export function OrdersManager({
             
             // Commission
             const mech = trabajadores.find((t) => t.id === ord.trabajador_id);
-            const commissionRate = ord.comision_porcentaje ?? mech?.comision_porcentaje ?? 40;
+            const commissionRate = mech?.comision_porcentaje ?? ord.comision_porcentaje ?? 40;
             const mechEarnings = (labor * commissionRate) / 100;
             const workshopPartsProfit = partsSold - partsCostObj;
             const workshopNetProfit = totalBill - mechEarnings - partsCostObj;
@@ -371,7 +534,14 @@ export function OrdersManager({
                   <select
                     required
                     value={editingOrden.cliente_id || ''}
-                    onChange={(e) => setEditingOrden({ ...editingOrden, cliente_id: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'ADD_NEW_CLIENT') {
+                        setShowAddClient(true);
+                      } else {
+                        setEditingOrden({ ...editingOrden, cliente_id: val, auto_id: '' });
+                      }
+                    }}
                     className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none"
                   >
                     <option value="">Seleccione Cliente...</option>
@@ -380,6 +550,9 @@ export function OrdersManager({
                         {c.nombre} ({c.cedula})
                       </option>
                     ))}
+                    <option value="ADD_NEW_CLIENT" className="text-emerald-600 font-bold bg-emerald-50">
+                      + Registrar Nuevo Cliente...
+                    </option>
                   </select>
                 </div>
 
@@ -388,7 +561,18 @@ export function OrdersManager({
                   <select
                     required
                     value={editingOrden.auto_id || ''}
-                    onChange={(e) => setEditingOrden({ ...editingOrden, auto_id: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'ADD_NEW_VEHICULO') {
+                        if (!editingOrden.cliente_id) {
+                          alert('Por favor, seleccione un Cliente Solicitante primero para poder registrarle un vehículo.');
+                        } else {
+                          setShowAddVehiculo(true);
+                        }
+                      } else {
+                        setEditingOrden({ ...editingOrden, auto_id: val });
+                      }
+                    }}
                     className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none"
                   >
                     <option value="">Seleccione Carro...</option>
@@ -400,6 +584,9 @@ export function OrdersManager({
                           {v.marca} {v.modelo} ({v.placa})
                         </option>
                       ))}
+                    <option value="ADD_NEW_VEHICULO" className="text-emerald-600 font-bold bg-emerald-50">
+                      + Registrar Nuevo Vehículo...
+                    </option>
                   </select>
                 </div>
 
@@ -408,7 +595,15 @@ export function OrdersManager({
                   <select
                     required
                     value={editingOrden.trabajador_id || ''}
-                    onChange={(e) => setEditingOrden({ ...editingOrden, trabajador_id: e.target.value })}
+                    onChange={(e) => {
+                      const workerId = e.target.value;
+                      const workerObj = trabajadores.find(t => t.id === workerId);
+                      setEditingOrden({
+                        ...editingOrden,
+                        trabajador_id: workerId,
+                        comision_porcentaje: workerObj ? workerObj.comision_porcentaje : 40
+                      });
+                    }}
                     className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none"
                   >
                     <option value="">Asigne Trabajador...</option>
@@ -662,6 +857,227 @@ export function OrdersManager({
                     {editingOrden.id ? 'Actualizar Orden' : 'Registrar Orden'}
                   </button>
                 </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Client Sub-modal */}
+      {showAddClient && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-55">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
+            <div className="bg-slate-900 text-white p-4">
+              <h4 className="font-bold text-sm tracking-tight flex items-center gap-2">
+                <User className="w-4 h-4 text-emerald-400" />
+                Registrar Nuevo Cliente
+              </h4>
+              <p className="text-[11px] text-slate-300 mt-0.5">
+                Ingrese la información para crear un nuevo perfil de cliente solicitante.
+              </p>
+            </div>
+            
+            <form onSubmit={handleQuickSaveClient} className="p-5 space-y-3.5 text-left text-xs">
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Nombre Completo (*)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. Juan Pérez"
+                  value={quickClient.nombre}
+                  onChange={(e) => setQuickClient({ ...quickClient, nombre: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Cédula / Documento (*)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej. V-12345678"
+                  value={quickClient.cedula}
+                  onChange={(e) => setQuickClient({ ...quickClient, cedula: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Teléfono</label>
+                  <input
+                    type="tel"
+                    placeholder="Ej. 0414-1234567"
+                    value={quickClient.telefono}
+                    onChange={(e) => setQuickClient({ ...quickClient, telefono: e.target.value })}
+                    className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Email</label>
+                  <input
+                    type="email"
+                    placeholder="Ej. juan@gmail.com"
+                    value={quickClient.email}
+                    onChange={(e) => setQuickClient({ ...quickClient, email: e.target.value })}
+                    className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Dirección</label>
+                <input
+                  type="text"
+                  placeholder="Calle, Sector, Ciudad..."
+                  value={quickClient.direccion}
+                  onChange={(e) => setQuickClient({ ...quickClient, direccion: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Observaciones</label>
+                <textarea
+                  rows={2}
+                  placeholder="Notas adicionales sobre el cliente..."
+                  value={quickClient.observaciones}
+                  onChange={(e) => setQuickClient({ ...quickClient, observaciones: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400 resize-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddClient(false)}
+                  className="px-3.5 py-1.5 font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors cursor-pointer"
+                >
+                  Guardar Cliente
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Vehicle Sub-modal */}
+      {showAddVehiculo && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 z-55">
+          <div className="bg-white rounded-xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col">
+            <div className="bg-slate-900 text-white p-4">
+              <h4 className="font-bold text-sm tracking-tight flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-emerald-400" />
+                Registrar Nuevo Vehículo
+              </h4>
+              <p className="text-[11px] text-slate-300 mt-0.5">
+                Asociar un nuevo carro para: <strong className="text-emerald-300">{clientes.find(c => c.id === editingOrden?.cliente_id)?.nombre || 'Cliente seleccionado'}</strong>
+              </p>
+            </div>
+            
+            <form onSubmit={handleQuickSaveVehiculo} className="p-5 space-y-3.5 text-left text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Marca (*)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej. Toyota"
+                    value={quickVehiculo.marca}
+                    onChange={(e) => setQuickVehiculo({ ...quickVehiculo, marca: e.target.value })}
+                    className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Modelo (*)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej. Corolla"
+                    value={quickVehiculo.modelo}
+                    onChange={(e) => setQuickVehiculo({ ...quickVehiculo, modelo: e.target.value })}
+                    className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Placa (*)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej. AA123BB"
+                    value={quickVehiculo.placa}
+                    onChange={(e) => setQuickVehiculo({ ...quickVehiculo, placa: e.target.value })}
+                    className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Año</label>
+                  <input
+                    type="number"
+                    value={quickVehiculo.anio}
+                    onChange={(e) => setQuickVehiculo({ ...quickVehiculo, anio: parseInt(e.target.value) || new Date().getFullYear() })}
+                    className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Color</label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Gris Plata"
+                    value={quickVehiculo.color}
+                    onChange={(e) => setQuickVehiculo({ ...quickVehiculo, color: e.target.value })}
+                    className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Kilometraje</label>
+                  <input
+                    type="number"
+                    placeholder="Ej. 120000"
+                    value={quickVehiculo.km}
+                    onChange={(e) => setQuickVehiculo({ ...quickVehiculo, km: parseInt(e.target.value) || 0 })}
+                    className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-600 mb-1">Observaciones</label>
+                <textarea
+                  rows={2}
+                  placeholder="Detalles de carrocería, choques previos, etc..."
+                  value={quickVehiculo.observaciones}
+                  onChange={(e) => setQuickVehiculo({ ...quickVehiculo, observaciones: e.target.value })}
+                  className="w-full p-2 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-slate-400 resize-none"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddVehiculo(false)}
+                  className="px-3.5 py-1.5 font-bold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors cursor-pointer"
+                >
+                  Guardar Vehículo
+                </button>
               </div>
             </form>
           </div>

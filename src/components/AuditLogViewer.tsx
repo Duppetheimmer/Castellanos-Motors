@@ -1,5 +1,5 @@
-import React from 'react';
-import { History, ShieldAlert, AlertTriangle, ArrowUpRight, ArrowDownLeft, Trash2, ShieldCheck, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { History, ShieldAlert, AlertTriangle, ArrowUpRight, ArrowDownLeft, Trash2, ShieldCheck, User, Calendar, Search } from 'lucide-react';
 import { LogBorrados } from '../types';
 
 interface AuditLogViewerProps {
@@ -7,6 +7,29 @@ interface AuditLogViewerProps {
 }
 
 export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ logBorrados }) => {
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditStartDate, setAuditStartDate] = useState('');
+  const [auditEndDate, setAuditEndDate] = useState('');
+
+  const filteredLogs = logBorrados.filter((log) => {
+    // Search text matching description or user or entity type
+    const matchesSearch = !auditSearch ||
+      log.descripcion_auditoria.toLowerCase().includes(auditSearch.toLowerCase()) ||
+      (log.usuario && log.usuario.toLowerCase().includes(auditSearch.toLowerCase())) ||
+      log.tipo_entidad.toLowerCase().includes(auditSearch.toLowerCase());
+      
+    // Date filter on fecha_suceso
+    let matchesDate = true;
+    const logDate = log.fecha_suceso.split('T')[0];
+    if (auditStartDate) {
+      matchesDate = matchesDate && (logDate >= auditStartDate);
+    }
+    if (auditEndDate) {
+      matchesDate = matchesDate && (logDate <= auditEndDate);
+    }
+    
+    return matchesSearch && matchesDate;
+  });
   
   const getBadgeStyles = (tipo: 'venta' | 'orden' | 'transaccion' | 'devolucion_repuesto') => {
     switch (tipo) {
@@ -79,18 +102,73 @@ export const AuditLogViewer: React.FC<AuditLogViewerProps> = ({ logBorrados }) =
 
       {/* RECENT ENTRIES LIST */}
       <div className="bg-white border border-slate-250 rounded-2xl p-6 shadow-xs">
-        <h3 className="text-xs uppercase tracking-widest font-black text-slate-400 mb-6">
-          Registro de Auditoría de Eliminaciones ({logBorrados.length} Registros)
+        <h3 className="text-xs uppercase tracking-widest font-black text-slate-400 mb-4">
+          Registro de Auditoría de Eliminaciones ({filteredLogs.length} de {logBorrados.length} Registros)
         </h3>
+
+        {logBorrados.length > 0 && (
+          <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200/60 mb-6 text-xs text-slate-800">
+            {/* Search Input */}
+            <div className="relative w-full md:w-80">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar por descripción, usuario, tipo..."
+                value={auditSearch}
+                onChange={(e) => setAuditSearch(e.target.value)}
+                className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-700"
+              />
+            </div>
+
+            {/* Exact Date Range Filter */}
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto justify-end">
+              <div className="flex items-center gap-1 bg-white border border-slate-200 py-1 px-2 rounded-lg text-xs text-slate-600 shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="font-semibold text-[10px] text-slate-500">Desde:</span>
+                <input
+                  type="date"
+                  value={auditStartDate}
+                  onChange={(e) => setAuditStartDate(e.target.value)}
+                  className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+                />
+                <span className="font-semibold text-[10px] text-slate-500">Hasta:</span>
+                <input
+                  type="date"
+                  value={auditEndDate}
+                  onChange={(e) => setAuditEndDate(e.target.value)}
+                  className="bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-700 text-[11px] py-0 px-1 font-semibold w-24"
+                />
+                {(auditStartDate || auditEndDate || auditSearch) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuditStartDate('');
+                      setAuditEndDate('');
+                      setAuditSearch('');
+                    }}
+                    className="text-[9px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-black cursor-pointer transition-colors border border-slate-200"
+                    title="Limpiar filtros"
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {logBorrados.length === 0 ? (
           <div className="p-16 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs italic space-y-2">
             <ShieldAlert className="w-8 h-8 text-slate-350 mx-auto" />
             <p>La bitácora está limpia. No se registran eliminaciones ni devoluciones contables aún.</p>
           </div>
+        ) : filteredLogs.length === 0 ? (
+          <div className="p-16 border border-dashed border-slate-200 rounded-xl text-center text-slate-400 text-xs italic">
+            No se encontraron registros de auditoría para los filtros seleccionados.
+          </div>
         ) : (
           <div className="relative border-l border-slate-200 pl-4 ml-3 space-y-6">
-            {logBorrados.map((log) => {
+            {filteredLogs.map((log) => {
               const badge = getBadgeStyles(log.tipo_entidad);
 
               return (

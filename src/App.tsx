@@ -524,7 +524,9 @@ export default function App() {
         });
         if (error) {
           console.error('Error syncing work order to Supabase:', error);
-          if (error.message && error.message.includes('comision_porcentaje')) {
+          if (error.message && error.message.includes('comision_pagada')) {
+            alert('Error de Base de Datos: La columna "comision_pagada" no existe en la tabla "ordenes" de tu base de datos Supabase.\n\nPara solucionarlo, por favor ve al SQL Editor de Supabase y ejecuta esta línea:\n\nALTER TABLE ordenes ADD COLUMN IF NOT EXISTS comision_pagada BOOLEAN NOT NULL DEFAULT FALSE;');
+          } else if (error.message && error.message.includes('comision_porcentaje')) {
             alert('Error de Base de Datos: La columna "comision_porcentaje" no existe en la tabla "ordenes" de tu base de datos Supabase.\n\nPara solucionarlo, por favor ve al SQL Editor de Supabase y ejecuta esta línea:\n\nALTER TABLE ordenes ADD COLUMN IF NOT EXISTS comision_porcentaje INTEGER NOT NULL DEFAULT 40;');
           } else {
             alert('Error al guardar la orden en la base de datos de la nube: ' + error.message);
@@ -843,11 +845,18 @@ export default function App() {
       );
       for (const ord of unpaidOfWorker) {
         try {
-          await supabase.from('ordenes').upsert({
+          const { error } = await supabase.from('ordenes').upsert({
             ...ord,
             comision_pagada: true,
             repuestos: ord.repuestos
           });
+          if (error) {
+            console.error('Error syncing comision_pagada to Supabase:', error);
+            if (error.message && error.message.includes('comision_pagada')) {
+              alert('Error de Base de Datos: La columna "comision_pagada" no existe en la tabla "ordenes" de tu base de datos Supabase.\n\nPara solucionarlo, por favor ve al SQL Editor de Supabase y ejecuta esta línea:\n\nALTER TABLE ordenes ADD COLUMN IF NOT EXISTS comision_pagada BOOLEAN NOT NULL DEFAULT FALSE;');
+              break; // Don't spam alerts
+            }
+          }
         } catch (err) {
           console.error('Error syncing comision_pagada to Supabase:', err);
         }
@@ -941,7 +950,7 @@ export default function App() {
     // 5. WORKER INCENTI-COMMISSIONS (Comision pagada por mano de obra adjudicada)
     const remuneracionTrabajadores = periodOrders.reduce((sum, o) => {
       const worker = trabajadores.find((t) => t.id === o.trabajador_id);
-      const rate = Number(o.comision_porcentaje ?? worker?.comision_porcentaje ?? 40);
+      const rate = Number(worker?.comision_porcentaje ?? o.comision_porcentaje ?? 40);
       const orderFee = (Number(o.labor_cost || 0) * rate) / 100;
       return sum + orderFee;
     }, 0);
@@ -1017,7 +1026,7 @@ export default function App() {
       // Sum labor commission on all completed jobs of the period
       const completedFiltered = metrics.periodOrders.filter((o) => o.trabajador_id === t.id);
       const totalWorkerEarnings = completedFiltered.reduce((sum, o) => {
-        const rate = Number(o.comision_porcentaje ?? t.comision_porcentaje ?? 40);
+        const rate = Number(t.comision_porcentaje ?? o.comision_porcentaje ?? 40);
         const earned = (Number(o.labor_cost || 0) * rate) / 100;
         return sum + earned;
       }, 0);
@@ -1353,6 +1362,8 @@ export default function App() {
               onSaveOrden={handleSaveOrden}
               onDeleteOrden={handleDeleteOrden}
               onUpdateInventoryStock={handleUpdateInventoryStock}
+              onSaveCliente={handleSaveCliente}
+              onSaveVehiculo={handleSaveVehiculo}
             />
           )}
 
@@ -1385,6 +1396,7 @@ export default function App() {
               onSaveOrden={handleSaveOrden}
               onDeleteOrden={handleDeleteOrden}
               onUpdateInventoryStock={handleUpdateInventoryStock}
+              onAddTransaccion={handleAddTransaccion}
             />
           )}
 
