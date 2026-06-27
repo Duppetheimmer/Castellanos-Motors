@@ -5,6 +5,7 @@ import {
   ClipboardList, Wallet, Trash2, Search, Info, TrendingUp, 
   Sparkles, CheckCircle2, ShoppingCart, Tag, ArrowRight, AlertCircle 
 } from 'lucide-react';
+import { SparePartSearchPicker } from './SparePartSearchPicker';
 
 interface WorkersManagerProps {
   trabajadores: Trabajador[];
@@ -983,18 +984,13 @@ export function WorkersManager({
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
                     <label className="block text-[9.5px] text-slate-500 font-bold mb-0.5">Buscar Repuesto en Stock</label>
-                    <select
-                      value={selectedPartId}
-                      onChange={(e) => setSelectedPartId(e.target.value)}
-                      className="w-full text-xs p-1.5 border border-slate-200 rounded bg-white focus:outline-none"
-                    >
-                      <option value="">Selecciona repuesto...</option>
-                      {repuestos.filter(r => r.cantidad > 0).map((r) => (
-                        <option key={r.id} value={r.id}>
-                          {r.nombre} - Cd: {r.codigo} (${r.precio} VTA / Coste: ${r.costo}) [Stock: {r.cantidad} uds]
-                        </option>
-                      ))}
-                    </select>
+                    <SparePartSearchPicker
+                      repuestos={repuestos}
+                      selectedId={selectedPartId}
+                      onSelect={(id) => setSelectedPartId(id)}
+                      placeholder="Buscar por código, nombre o categoría..."
+                      filterAvailableOnly={true}
+                    />
                   </div>
 
                   <div className="w-20">

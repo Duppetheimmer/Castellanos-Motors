@@ -88,10 +88,138 @@ const formatMonthId = (monthId: string) => {
   return `${monthName} ${year}`;
 };
 
+const SEC_SESS_KEY = '_sys_cache_sec_sess';
+const SEC_USR_KEY = '_sys_cache_sec_usr';
+const SEC_PWD_KEY = '_sys_cache_sec_pwd';
+
+// DEFAULT_USER_HASH: '2222d0bddcf7cbf35835f026dbe7876502c64dbe1a9985af94e1094c1c6186f8' base64 encoded
+const DEFAULT_USER_HASH_OBF = 'MjIyMmQwYmRkY2Y3Y2JmMzU4MzVmMDI2ZGJlNzg3NjUwMmM2NGRiZTFhOTk4NWFmOTRlMTA5NGMxYzYxODZmOA==';
+// DEFAULT_PASS_HASH: '1d7a0941b823e2314e744d7a59ad2bd8ad5d0d2e2c39d1547bb1ad9d167e8624' base64 encoded
+const DEFAULT_PASS_HASH_OBF = 'MWQ3YTA5NDFiODIzZTIzMTRlNzQ0ZDdhNTlhZDJiZDhhZDVkMGQyZTJjMzlkMTU0N2JiMWFkOWQxNjdlODYyNA==';
+
+const getDeobfuscatedHash = (obfuscated: string): string => {
+  try {
+    return atob(obfuscated);
+  } catch {
+    return '';
+  }
+};
+
+const sha256Fallback = (ascii: string): string => {
+  const rightRotateFn = (v: number, n: number) => (v >>> n) | (v << (32 - n));
+  const h = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+  ];
+  const k = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  ];
+
+  const asciiLength = ascii.length;
+  let bitLength = asciiLength * 8;
+  const wordCount = ((bitLength + 64) >> 9) << 4;
+  const words: number[] = [];
+  for (let idx = 0; idx < wordCount + 16; idx++) {
+    words[idx] = 0;
+  }
+  for (let idx = 0; idx < asciiLength; idx++) {
+    words[idx >> 2] |= (ascii.charCodeAt(idx) & 0xff) << (24 - (idx % 4) * 8);
+  }
+  words[bitLength >> 5] |= 0x80 << (24 - (bitLength % 32));
+  words[(((bitLength + 64) >> 9) << 4) + 15] = bitLength;
+
+  for (let idx = 0; idx < words.length; idx += 16) {
+    const w: number[] = [];
+    for (let j = 0; j < 64; j++) {
+      if (j < 16) {
+        w[j] = words[idx + j] || 0;
+      } else {
+        const s0 = rightRotateFn(w[j - 15], 7) ^ rightRotateFn(w[j - 15], 18) ^ (w[j - 15] >>> 3);
+        const s1 = rightRotateFn(w[j - 2], 17) ^ rightRotateFn(w[j - 2], 19) ^ (w[j - 2] >>> 10);
+        w[j] = (w[j - 16] + s0 + w[j - 7] + s1) | 0;
+      }
+    }
+
+    let a = h[0];
+    let b = h[1];
+    let c = h[2];
+    let d = h[3];
+    let e = h[4];
+    let f = h[5];
+    let g = h[6];
+    let h_val = h[7];
+
+    for (let j = 0; j < 64; j++) {
+      const s1 = rightRotateFn(e, 6) ^ rightRotateFn(e, 11) ^ rightRotateFn(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (h_val + s1 + ch + k[j] + w[j]) | 0;
+      const s0 = rightRotateFn(a, 2) ^ rightRotateFn(a, 13) ^ rightRotateFn(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (s0 + maj) | 0;
+
+      h_val = g;
+      g = f;
+      f = e;
+      e = (d + temp1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) | 0;
+    }
+
+    h[0] = (h[0] + a) | 0;
+    h[1] = (h[1] + b) | 0;
+    h[2] = (h[2] + c) | 0;
+    h[3] = (h[3] + d) | 0;
+    h[4] = (h[4] + e) | 0;
+    h[5] = (h[5] + f) | 0;
+    h[6] = (h[6] + g) | 0;
+    h[7] = (h[7] + h_val) | 0;
+  }
+
+  let result = '';
+  for (let idx = 0; idx < 8; idx++) {
+    let hex = (h[idx] >>> 0).toString(16);
+    while (hex.length < 8) {
+      hex = '0' + hex;
+    }
+    result += hex;
+  }
+  return result;
+};
+
+const hashString = async (text: string, lowerCase: boolean = false): Promise<string> => {
+  const formatted = lowerCase ? text.trim().toLowerCase() : text.trim();
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(formatted);
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+      console.warn('Native crypto digest failed, falling back to sha256Fallback:', e);
+    }
+  }
+  return sha256Fallback(formatted);
+};
+
 export default function App() {
   // Auth and secure access states
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem('econograph_session_active') === 'true';
+    const storedToken = sessionStorage.getItem(SEC_SESS_KEY);
+    if (!storedToken) return false;
+    const expectedUserHash = localStorage.getItem(SEC_USR_KEY) || getDeobfuscatedHash(DEFAULT_USER_HASH_OBF);
+    const expectedPassHash = localStorage.getItem(SEC_PWD_KEY) || getDeobfuscatedHash(DEFAULT_PASS_HASH_OBF);
+    const computedToken = sha256Fallback(`${expectedUserHash}:${expectedPassHash}:castellanos_motors_session_secret`);
+    return storedToken === computedToken;
   });
   const [isChangeAuthOpen, setIsChangeAuthOpen] = useState(false);
   const [newUsername, setNewUsername] = useState('');
@@ -99,115 +227,6 @@ export default function App() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changeAuthError, setChangeAuthError] = useState<string | null>(null);
   const [changeAuthSuccess, setChangeAuthSuccess] = useState(false);
-
-  // Pure JavaScript SHA-256 fallback for browsers/contexts without crypto.subtle (e.g., non-HTTPS, inside iframes, specific WebViews)
-  const sha256Fallback = (ascii: string): string => {
-    const rightRotateFn = (v: number, n: number) => (v >>> n) | (v << (32 - n));
-    const h = [
-      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
-    ];
-    const k = [
-      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-    ];
-
-    const asciiLength = ascii.length;
-    let bitLength = asciiLength * 8;
-    const wordCount = ((bitLength + 64) >> 9) << 4;
-    const words: number[] = [];
-    for (let idx = 0; idx < wordCount + 16; idx++) {
-      words[idx] = 0;
-    }
-    for (let idx = 0; idx < asciiLength; idx++) {
-      words[idx >> 2] |= (ascii.charCodeAt(idx) & 0xff) << (24 - (idx % 4) * 8);
-    }
-    words[bitLength >> 5] |= 0x80 << (24 - (bitLength % 32));
-    words[(((bitLength + 64) >> 9) << 4) + 15] = bitLength;
-
-    for (let idx = 0; idx < words.length; idx += 16) {
-      const w: number[] = [];
-      for (let j = 0; j < 64; j++) {
-        if (j < 16) {
-          w[j] = words[idx + j] || 0;
-        } else {
-          const s0 = rightRotateFn(w[j - 15], 7) ^ rightRotateFn(w[j - 15], 18) ^ (w[j - 15] >>> 3);
-          const s1 = rightRotateFn(w[j - 2], 17) ^ rightRotateFn(w[j - 2], 19) ^ (w[j - 2] >>> 10);
-          w[j] = (w[j - 16] + s0 + w[j - 7] + s1) | 0;
-        }
-      }
-
-      let a = h[0];
-      let b = h[1];
-      let c = h[2];
-      let d = h[3];
-      let e = h[4];
-      let f = h[5];
-      let g = h[6];
-      let h_val = h[7];
-
-      for (let j = 0; j < 64; j++) {
-        const s1 = rightRotateFn(e, 6) ^ rightRotateFn(e, 11) ^ rightRotateFn(e, 25);
-        const ch = (e & f) ^ (~e & g);
-        const temp1 = (h_val + s1 + ch + k[j] + w[j]) | 0;
-        const s0 = rightRotateFn(a, 2) ^ rightRotateFn(a, 13) ^ rightRotateFn(a, 22);
-        const maj = (a & b) ^ (a & c) ^ (b & c);
-        const temp2 = (s0 + maj) | 0;
-
-        h_val = g;
-        g = f;
-        f = e;
-        e = (d + temp1) | 0;
-        d = c;
-        c = b;
-        b = a;
-        a = (temp1 + temp2) | 0;
-      }
-
-      h[0] = (h[0] + a) | 0;
-      h[1] = (h[1] + b) | 0;
-      h[2] = (h[2] + c) | 0;
-      h[3] = (h[3] + d) | 0;
-      h[4] = (h[4] + e) | 0;
-      h[5] = (h[5] + f) | 0;
-      h[6] = (h[6] + g) | 0;
-      h[7] = (h[7] + h_val) | 0;
-    }
-
-    let result = '';
-    for (let idx = 0; idx < 8; idx++) {
-      let hex = (h[idx] >>> 0).toString(16);
-      while (hex.length < 8) {
-        hex = '0' + hex;
-      }
-      result += hex;
-    }
-    return result;
-  };
-
-  // SHA-256 secure hashing helper with pure-JS fallback
-  const hashString = async (text: string, lowerCase: boolean = false): Promise<string> => {
-    const formatted = lowerCase ? text.trim().toLowerCase() : text.trim();
-    
-    if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
-      try {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(formatted);
-        const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      } catch (e) {
-        console.warn('Native crypto digest failed, falling back to sha256Fallback:', e);
-      }
-    }
-    return sha256Fallback(formatted);
-  };
 
   const handleUpdateAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,8 +250,12 @@ export default function App() {
       const userHash = await hashString(newUsername, true);
       const passHash = await hashString(newPassword, false);
 
-      localStorage.setItem('econograph_user_hash', userHash);
-      localStorage.setItem('econograph_pass_hash', passHash);
+      localStorage.setItem(SEC_USR_KEY, userHash);
+      localStorage.setItem(SEC_PWD_KEY, passHash);
+
+      // Sign the updated session securely as well
+      const computedToken = sha256Fallback(`${userHash}:${passHash}:castellanos_motors_session_secret`);
+      sessionStorage.setItem(SEC_SESS_KEY, computedToken);
 
       setChangeAuthSuccess(true);
       setNewUsername('');
@@ -250,7 +273,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem('econograph_session_active');
+    sessionStorage.removeItem(SEC_SESS_KEY);
     setIsAuthenticated(false);
   };
 

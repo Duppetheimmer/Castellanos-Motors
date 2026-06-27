@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Orden, Cliente, Vehiculo, Trabajador, Repuesto, EstadoOrden, OrdenRepuestoItem } from '../types';
 import { FileText, Plus, Search, Edit2, Play, CheckCircle2, AlertCircle, ShoppingCart, HelpCircle, User, Wrench, RefreshCw, Calendar } from 'lucide-react';
+import { SparePartSearchPicker } from './SparePartSearchPicker';
 
 interface OrdersManagerProps {
   ordenes: Orden[];
@@ -679,18 +680,12 @@ export function OrdersManager({
                 <div className="flex gap-2.5 items-end bg-white p-3 rounded-lg border border-slate-250/30 shadow-2xs mb-4">
                   <div className="flex-1">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Elegir Repuesto Disponible</label>
-                    <select
-                      value={selectedPartId}
-                      onChange={(e) => setSelectedPartId(e.target.value)}
-                      className="w-full text-[11px] p-2 border border-slate-200 rounded-md bg-slate-50"
-                    >
-                      <option value="">-- Buscar en Inventario --</option>
-                      {repuestos.map((r) => (
-                        <option key={r.id} value={r.id} disabled={r.cantidad === 0}>
-                          {r.nombre} (Cod: {r.codigo}) - ${r.precio} (Stock: {r.cantidad})
-                        </option>
-                      ))}
-                    </select>
+                    <SparePartSearchPicker
+                      repuestos={repuestos}
+                      selectedId={selectedPartId}
+                      onSelect={(id) => setSelectedPartId(id)}
+                      placeholder="Escribe código, nombre o categoría..."
+                    />
                   </div>
                   <div className="w-20">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-0.5">Cant.</label>

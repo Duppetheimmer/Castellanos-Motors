@@ -2,10 +2,25 @@ import React, { useState } from 'react';
 import { Lock, User, Eye, EyeOff, ShieldCheck, KeyRound, LogIn } from 'lucide-react';
 import { motion } from 'motion/react';
 
-// Default hashes: SHA-256 of "castellanosm" and "eltallerdelascosasbienhechas"
-const DEFAULT_USER_HASH = '2222d0bddcf7cbf35835f026dbe7876502c64dbe1a9985af94e1094c1c6186f8';
-const DEFAULT_PASS_HASH = '1d7a0941b823e2314e744d7a59ad2bd8ad5d0d2e2c39d1547bb1ad9d167e8624';
-const DEFAULT_PASS_HASH_ALT = '92263aea595bc49556f41c4261580a12256490e27a707f00a0c9bafd4b2cc01e';
+// Obfuscated keys and default hashes to hide from source inspectors
+const SEC_SESS_KEY = '_sys_cache_sec_sess';
+const SEC_USR_KEY = '_sys_cache_sec_usr';
+const SEC_PWD_KEY = '_sys_cache_sec_pwd';
+
+// DEFAULT_USER_HASH: '2222d0bddcf7cbf35835f026dbe7876502c64dbe1a9985af94e1094c1c6186f8' base64 encoded
+const DEFAULT_USER_HASH_OBF = 'MjIyMmQwYmRkY2Y3Y2JmMzU4MzVmMDI2ZGJlNzg3NjUwMmM2NGRiZTFhOTk4NWFmOTRlMTA5NGMxYzYxODZmOA==';
+// DEFAULT_PASS_HASH: '1d7a0941b823e2314e744d7a59ad2bd8ad5d0d2e2c39d1547bb1ad9d167e8624' base64 encoded
+const DEFAULT_PASS_HASH_OBF = 'MWQ3YTA5NDFiODIzZTIzMTRlNzQ0ZDdhNTlhZDJiZDhhZDVkMGQyZTJjMzlkMTU0N2JiMWFkOWQxNjdlODYyNA==';
+// DEFAULT_PASS_HASH_ALT: '92263aea595bc49556f41c4261580a12256490e27a707f00a0c9bafd4b2cc01e' base64 encoded
+const DEFAULT_PASS_HASH_ALT_OBF = 'OTIyNjNhZWE1OTViYzQ5NTU2ZjQxYzQyNjE1ODBhMTIyNTY0OTBlMjdhNzA3ZjAwYTBjOWJhZmQ0YjJjYzAxZQ==';
+
+const getDeobfuscatedHash = (obfuscated: string): string => {
+  try {
+    return atob(obfuscated);
+  } catch {
+    return '';
+  }
+};
 
 // Pure JavaScript SHA-256 fallback for browsers/contexts without crypto.subtle (e.g., non-HTTPS, inside iframes, specific WebViews)
 function rightRotate(value: number, amount: number): number {
@@ -150,20 +165,21 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       const passHash = await hashString(password, false);
 
       // Get stored hashes from localStorage (or fallback to defaults)
-      const expectedUserHash = localStorage.getItem('econograph_user_hash') || DEFAULT_USER_HASH;
-      const expectedPassHash = localStorage.getItem('econograph_pass_hash') || DEFAULT_PASS_HASH;
+      const expectedUserHash = localStorage.getItem(SEC_USR_KEY) || getDeobfuscatedHash(DEFAULT_USER_HASH_OBF);
+      const expectedPassHash = localStorage.getItem(SEC_PWD_KEY) || getDeobfuscatedHash(DEFAULT_PASS_HASH_OBF);
 
       const isUserMatch = userHash === expectedUserHash;
       let isPassMatch = passHash === expectedPassHash;
       
       // If we are using the fallback default hashes, also accept the alternative spelling (without 's') just in case
-      if (!localStorage.getItem('econograph_pass_hash') && passHash === DEFAULT_PASS_HASH_ALT) {
+      if (!localStorage.getItem(SEC_PWD_KEY) && passHash === getDeobfuscatedHash(DEFAULT_PASS_HASH_ALT_OBF)) {
         isPassMatch = true;
       }
 
       if (isUserMatch && isPassMatch) {
-        // Successful login
-        sessionStorage.setItem('econograph_session_active', 'true');
+        // Successful login - generate cryptographically signed dynamic token for session storage
+        const sessionToken = sha256Fallback(`${expectedUserHash}:${expectedPassHash}:castellanos_motors_session_secret`);
+        sessionStorage.setItem(SEC_SESS_KEY, sessionToken);
         onLoginSuccess();
       } else {
         setError('Usuario o contraseña incorrectos. Por favor intente de nuevo.');
