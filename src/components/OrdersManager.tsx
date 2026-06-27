@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Orden, Cliente, Vehiculo, Trabajador, Repuesto, EstadoOrden, OrdenRepuestoItem } from '../types';
-import { FileText, Plus, Search, Edit2, Play, CheckCircle2, AlertCircle, ShoppingCart, HelpCircle, User, Wrench, RefreshCw, Calendar } from 'lucide-react';
+import { Orden, Cliente, Vehiculo, Trabajador, Repuesto, EstadoOrden, OrdenRepuestoItem, Servicio } from '../types';
+import { FileText, Plus, Search, Edit2, Play, CheckCircle2, AlertCircle, ShoppingCart, HelpCircle, User, Wrench, RefreshCw, Calendar, Briefcase } from 'lucide-react';
 import { SparePartSearchPicker } from './SparePartSearchPicker';
 
 interface OrdersManagerProps {
@@ -9,6 +9,7 @@ interface OrdersManagerProps {
   vehiculos: Vehiculo[];
   trabajadores: Trabajador[];
   repuestos: Repuesto[];
+  servicios?: Servicio[];
   onSaveOrden: (orden: Orden) => void;
   onDeleteOrden: (id: string) => void;
   onUpdateInventoryStock: (sparePartsUsed: { id: string; qty: number }[]) => void;
@@ -22,6 +23,7 @@ export function OrdersManager({
   vehiculos,
   trabajadores,
   repuestos,
+  servicios = [],
   onSaveOrden,
   onDeleteOrden,
   onUpdateInventoryStock,
@@ -755,7 +757,36 @@ export function OrdersManager({
               </div>
 
               {/* Labor Cost & Comments */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs font-extrabold text-slate-600 mb-1">Cargar Servicio Predefinido</label>
+                  <select
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (!val) return;
+                      const srv = servicios.find(s => s.id === val);
+                      if (srv) {
+                        setEditingOrden(prev => ({
+                          ...prev,
+                          labor_cost: srv.precio_estandar,
+                          descripcion: prev.descripcion ? prev.descripcion : srv.nombre
+                        }));
+                      }
+                      // Reset selection
+                      e.target.value = "";
+                    }}
+                    className="w-full p-1.5 text-xs text-slate-800 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none font-semibold cursor-pointer"
+                    defaultValue=""
+                  >
+                    <option value="">-- Seleccionar --</option>
+                    {servicios.map((srv) => (
+                      <option key={srv.id} value={srv.id}>
+                        {srv.nombre} (${srv.precio_estandar.toFixed(2)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-xs font-extrabold text-slate-600 mb-1">Costo Mano de Obra (Labor Cost)</label>
                   <div className="relative">

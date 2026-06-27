@@ -9,9 +9,10 @@ import {
   INITIAL_TRABAJADORES,
   INITIAL_ORDENES,
   INITIAL_SOLICITUDES,
-  INITIAL_TRANSACCIONES
+  INITIAL_TRANSACCIONES,
+  INITIAL_SERVICIOS
 } from './data';
-import { Cliente, Vehiculo, Repuesto, Orden, Trabajador, TransaccionExtra, VentaIndividual, LogBorrados } from './types';
+import { Cliente, Vehiculo, Repuesto, Orden, Trabajador, TransaccionExtra, VentaIndividual, LogBorrados, Servicio } from './types';
 import { DashboardCharts } from './components/DashboardCharts';
 import { InventoryManager } from './components/InventoryManager';
 import { OrdersManager } from './components/OrdersManager';
@@ -22,6 +23,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { VentasIndividualesManager } from './components/VentasIndividualesManager';
 import { AuditLogViewer } from './components/AuditLogViewer';
 import { RepuestosMovimientos } from './components/RepuestosMovimientos';
+import { ServicesManager } from './components/ServicesManager';
 import {
   Wrench,
   BarChart3,
@@ -286,6 +288,7 @@ export default function App() {
   const [transacciones, setTransacciones] = useState<TransaccionExtra[]>(() => loadState('transacciones', INITIAL_TRANSACCIONES));
   const [ventasIndividuales, setVentasIndividuales] = useState<VentaIndividual[]>(() => loadState('ventas_individuales', []));
   const [logBorrados, setLogBorrados] = useState<LogBorrados[]>(() => loadState('log_borrados', []));
+  const [servicios, setServicios] = useState<Servicio[]>(() => loadState('servicios', INITIAL_SERVICIOS));
 
   const [supabaseConnected, setSupabaseConnected] = useState<boolean>(false);
   const [loadingSupabase, setLoadingSupabase] = useState<boolean>(false);
@@ -308,6 +311,7 @@ export default function App() {
 
         let dbVentasInd: any[] | null = null;
         let dbLogBorrados: any[] | null = null;
+        let dbServicios: any[] | null = null;
 
         try {
           const { data } = await supabase.from('ventas_individuales').select('*');
@@ -323,7 +327,14 @@ export default function App() {
           console.warn('La tabla de historial_borrados no pudo ser leída o no existe aún:', e);
         }
 
-        const totalRows = (dbCli?.length || 0) + (dbVeh?.length || 0) + (dbRep?.length || 0) + (dbTrab?.length || 0) + (dbOrd?.length || 0) + (dbTx?.length || 0);
+        try {
+          const { data } = await supabase.from('servicios').select('*');
+          dbServicios = data;
+        } catch (e) {
+          console.warn('La tabla de servicios no pudo ser leída o no existe aún:', e);
+        }
+
+        const totalRows = (dbCli?.length || 0) + (dbVeh?.length || 0) + (dbRep?.length || 0) + (dbTrab?.length || 0) + (dbOrd?.length || 0) + (dbTx?.length || 0) + (dbServicios?.length || 0);
 
         if (totalRows === 0) {
           console.log('Empty Cloud Instance detected. Provisioning demo datasets...');
@@ -333,6 +344,13 @@ export default function App() {
           if (INITIAL_TRABAJADORES.length > 0) await supabase.from('trabajadores').insert(INITIAL_TRABAJADORES);
           if (INITIAL_ORDENES.length > 0) await supabase.from('ordenes').insert(INITIAL_ORDENES);
           if (INITIAL_TRANSACCIONES.length > 0) await supabase.from('transacciones_extra').insert(INITIAL_TRANSACCIONES);
+          if (INITIAL_SERVICIOS.length > 0) {
+            try {
+              await supabase.from('servicios').insert(INITIAL_SERVICIOS);
+            } catch (errSrv) {
+              console.warn('Could not insert initial services:', errSrv);
+            }
+          }
           
           setClientes(INITIAL_CLIENTES);
           setVehiculos(INITIAL_VEHICULOS);
@@ -340,6 +358,7 @@ export default function App() {
           setTrabajadores(INITIAL_TRABAJADORES);
           setOrdenes(INITIAL_ORDENES);
           setTransacciones(INITIAL_TRANSACCIONES);
+          setServicios(INITIAL_SERVICIOS);
         } else {
           console.log('Synced with Supabase successfully.');
           if (dbCli) setClientes(dbCli);
@@ -356,6 +375,10 @@ export default function App() {
             setLogBorrados(dbLogBorrados);
             saveState('log_borrados', dbLogBorrados);
           }
+          if (dbServicios) {
+            setServicios(dbServicios);
+            saveState('servicios', dbServicios);
+          }
         }
         setSupabaseConnected(true);
       } catch (err) {
@@ -369,7 +392,7 @@ export default function App() {
   }, []);
 
   // Current selected screen
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventario' | 'ordenes' | 'personal' | 'repuestos_movimientos' | 'flujo' | 'ventas_directas' | 'auditoria'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'inventario' | 'ordenes' | 'personal' | 'repuestos_movimientos' | 'flujo' | 'ventas_directas' | 'auditoria' | 'servicios'>('dashboard');
 
   // Year-Month level selection for EconoGRAPH (e.g. '2025-05' or 'Todos')
   const [periodType, setPeriodType] = useState<'todos' | 'semanal' | 'mensual' | 'anual'>('todos');
@@ -528,6 +551,36 @@ export default function App() {
         await supabase.from('repuestos').delete().eq('id', id);
       } catch (e) {
         console.error('Error deleting spare part from Supabase:', e);
+      }
+    }
+  };
+
+  const handleSaveServicio = async (srv: Servicio) => {
+    const updated = servicios.some((x) => x.id === srv.id)
+      ? servicios.map((x) => (x.id === srv.id ? srv : x))
+      : [srv, ...servicios];
+    setServicios(updated);
+    saveState('servicios', updated);
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('servicios').upsert(srv);
+      } catch (e) {
+        console.error('Error syncing service to Supabase:', e);
+      }
+    }
+  };
+
+  const handleDeleteServicio = async (id: string) => {
+    const updated = servicios.filter((x) => x.id !== id);
+    setServicios(updated);
+    saveState('servicios', updated);
+
+    if (isSupabaseConfigured()) {
+      try {
+        await supabase.from('servicios').delete().eq('id', id);
+      } catch (e) {
+        console.error('Error deleting service from Supabase:', e);
       }
     }
   };
@@ -1161,6 +1214,18 @@ export default function App() {
           </button>
 
           <button
+            onClick={() => setActiveTab('servicios')}
+            className={`flex items-center gap-2 text-xs font-semibold py-2 px-3 rounded-lg cursor-pointer shrink-0 transition-all ${
+              activeTab === 'servicios'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <Briefcase className="w-3.5 h-3.5" />
+            <span>Servicios Predefinidos</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('personal')}
             className={`flex items-center gap-2 text-xs font-semibold py-2 px-3 rounded-lg cursor-pointer shrink-0 transition-all ${
               activeTab === 'personal'
@@ -1382,6 +1447,7 @@ export default function App() {
               vehiculos={vehiculos}
               trabajadores={trabajadores}
               repuestos={repuestos}
+              servicios={servicios}
               onSaveOrden={handleSaveOrden}
               onDeleteOrden={handleDeleteOrden}
               onUpdateInventoryStock={handleUpdateInventoryStock}
@@ -1404,6 +1470,14 @@ export default function App() {
               repuestos={repuestos}
               onSaveRepuesto={handleSaveRepuesto}
               onDeleteRepuesto={handleDeleteRepuesto}
+            />
+          )}
+
+          {activeTab === 'servicios' && (
+            <ServicesManager
+              servicios={servicios}
+              onSaveServicio={handleSaveServicio}
+              onDeleteServicio={handleDeleteServicio}
             />
           )}
 

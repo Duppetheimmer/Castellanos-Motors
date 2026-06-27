@@ -1,4 +1,4 @@
-import { Cliente, Vehiculo, Repuesto, Orden, Trabajador, Solicitud, TransaccionExtra } from './types';
+import { Cliente, Vehiculo, Repuesto, Orden, Trabajador, Solicitud, TransaccionExtra, Servicio } from './types';
 
 export const INITIAL_CLIENTES: Cliente[] = [
   {
@@ -273,6 +273,33 @@ export const INITIAL_TRANSACCIONES: TransaccionExtra[] = [
     monto: 120.00,
     fecha: '2025-05-15',
     creado_en: '2025-05-15T16:00:00Z'
+  }
+];
+
+export const INITIAL_SERVICIOS: Servicio[] = [
+  {
+    id: 'SRV-0001',
+    nombre: 'Cambio de Aceite y Filtro',
+    precio_estandar: 15.00,
+    descripcion: 'Incluye cambio de aceite, filtro de motor y revisión de fluidos.'
+  },
+  {
+    id: 'SRV-0002',
+    nombre: 'Entonación Mayor',
+    precio_estandar: 80.00,
+    descripcion: 'Cambio de bujías, limpieza de inyectores, filtro de aire y de gasolina.'
+  },
+  {
+    id: 'SRV-0003',
+    nombre: 'Revisión de Frenos',
+    precio_estandar: 20.00,
+    descripcion: 'Inspección de pastillas, discos y purgado de liga de frenos.'
+  },
+  {
+    id: 'SRV-0004',
+    nombre: 'Limpieza de Inyectores (Ultrasonido)',
+    precio_estandar: 35.00,
+    descripcion: 'Limpieza y calibración de inyectores por ultrasonido.'
   }
 ];
 

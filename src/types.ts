@@ -139,3 +139,12 @@ export interface LogBorrados {
   usuario?: string;
 }
 
+export interface Servicio {
+  id: string;
+  nombre: string;
+  precio_estandar: number;
+  descripcion?: string;
+  creado_en?: string;
+}
+
+

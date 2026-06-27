@@ -169,5 +169,16 @@ CREATE TABLE IF NOT EXISTS historial_borrados (
 ALTER TABLE ventas_individuales DISABLE ROW LEVEL SECURITY;
 ALTER TABLE historial_borrados DISABLE ROW LEVEL SECURITY;
 
+-- 12. TABLA: Servicios (Preset Labors with standard prices)
+CREATE TABLE IF NOT EXISTS servicios (
+    id TEXT PRIMARY KEY DEFAULT ('SRV-' || UPPER(SUBSTRING(MD5(RANDOM()::TEXT), 1, 6))),
+    nombre TEXT NOT NULL,
+    precio_estandar NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    descripcion TEXT DEFAULT '',
+    creado_en TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE servicios DISABLE ROW LEVEL SECURITY;
+
 -- SEED DATA DE PRUEBA (Opcional):
 -- INSERT INTO clientes (id, nombre, telefono, cedula, observaciones) VALUES ('CLI-A1B2', 'Carlos Mendoza', '0414-123-4567', 'V-15.342.198', 'Cliente frecuente');
