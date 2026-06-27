@@ -73,6 +73,8 @@ export interface Trabajador {
   telefono: string;
   fecha_ingreso: string;
   comision_porcentaje: number; // Porcentaje de mano de obra (e.g. 40 para 40%)
+  usuario?: string;
+  contrasena?: string;
 }
 
 export interface Solicitud {

@@ -170,7 +170,9 @@ export function WorkersManager({
       especialidad: editingTrabajador.especialidad,
       telefono: editingTrabajador.telefono || '',
       fecha_ingreso: editingTrabajador.fecha_ingreso || new Date().toISOString().split('T')[0],
-      comision_porcentaje: Number(editingTrabajador.comision_porcentaje ?? 40)
+      comision_porcentaje: Number(editingTrabajador.comision_porcentaje ?? 20),
+      usuario: editingTrabajador.usuario || '',
+      contrasena: editingTrabajador.contrasena || ''
     };
 
     onSaveTrabajador(worker);
@@ -473,7 +475,7 @@ export function WorkersManager({
             Registrar Trabajo Producido
           </button>
           <button
-            onClick={() => setEditingTrabajador({ comision_porcentaje: 40, fecha_ingreso: new Date().toISOString().split('T')[0] })}
+            onClick={() => setEditingTrabajador({ comision_porcentaje: 20, fecha_ingreso: new Date().toISOString().split('T')[0], usuario: '', contrasena: '' })}
             className="flex items-center gap-1 text-[11px] font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 py-1.5 px-3 rounded-lg cursor-pointer border border-slate-200 transition-all shrink-0"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -527,6 +529,18 @@ export function WorkersManager({
                       <span>Ingreso: {t.fecha_ingreso}</span>
                     </div>
                   </div>
+
+                  {/* Access Credentials display */}
+                  {(t.usuario || t.contrasena) && (
+                    <div className="mb-3 px-2 py-1.5 bg-slate-50 border border-slate-100 rounded-lg flex items-center justify-between text-[9.5px]">
+                      <span className="text-slate-500 font-medium flex items-center gap-1">
+                        <Users className="w-3 h-3 text-slate-400" /> Acceso: <strong className="text-slate-700 font-mono">{t.usuario || '—'}</strong>
+                      </span>
+                      <span className="text-slate-450 font-mono bg-white border border-slate-100 px-1.5 py-0.5 rounded">
+                        Clave: <strong className="text-slate-700 font-mono">{t.contrasena || '—'}</strong>
+                      </span>
+                    </div>
+                  )}
 
                   {/* Historical numbers */}
                   <div className="space-y-1.5">
@@ -1122,18 +1136,41 @@ export function WorkersManager({
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10.5px] font-bold text-slate-500 uppercase mb-1">Usuario de Acceso</label>
+                  <input
+                    type="text"
+                    placeholder="E.g. wilmer_cast"
+                    value={editingTrabajador.usuario || ''}
+                    onChange={(e) => setEditingTrabajador({ ...editingTrabajador, usuario: e.target.value })}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold text-slate-500 uppercase mb-1">Contraseña</label>
+                  <input
+                    type="text"
+                    placeholder="E.g. clave123"
+                    value={editingTrabajador.contrasena || ''}
+                    onChange={(e) => setEditingTrabajador({ ...editingTrabajador, contrasena: e.target.value })}
+                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
               <div className="bg-slate-55 bg-blue-50/50 p-4 border border-blue-100 rounded-xl space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] font-bold text-blue-950 uppercase">% de Comisión Adjudicada</span>
                   <span className="text-xs font-black text-blue-700 bg-white border border-blue-200 px-2 py-0.5 rounded font-mono">
-                    {editingTrabajador.comision_porcentaje}%
+                    {editingTrabajador.comision_porcentaje ?? 20}%
                   </span>
                 </div>
                 <input
                   type="range"
                   min="0"
                   max="100"
-                  value={editingTrabajador.comision_porcentaje ?? 40}
+                  value={editingTrabajador.comision_porcentaje ?? 20}
                   onChange={(e) => setEditingTrabajador({ ...editingTrabajador, comision_porcentaje: parseInt(e.target.value) })}
                   className="w-full h-1 bg-blue-200 rounded appearance-none cursor-pointer accent-blue-600"
                 />
